@@ -4,8 +4,8 @@
 const $ = sel => document.querySelector(sel);
 const el = {
   etat: $('#etat'), etatTexte: $('#etat-texte'), chrono: $('#chrono'), raccrocher: $('#raccrocher'),
-  accueil: $('#accueil'), code: $('#code'), lien: $('#lien'), partager: $('#partager'),
-  changerCode: $('#changer-code'), brut: $('#son-brut'), erreur: $('#erreur'),
+  accueil: $('#accueil'), lien: $('#lien'), partager: $('#partager'),
+  brut: $('#son-brut'), erreur: $('#erreur'),
   direct: $('#direct'), niveau: $('#niveau'), alerte: $('#alerte'),
   journal: $('#journal'), liste: $('#liste'),
   bouton: $('#gros-bouton'), boutonTitre: $('#bouton-titre'), boutonSous: $('#bouton-sous'),
@@ -18,7 +18,6 @@ const donnees = new Map();   // id → WAV (ArrayBuffer) des vocaux enregistrés
 const accuses = new Map();   // id → fonction appelée quand l'ordinateur confirme la réception
 const lignes = new Map();    // id → <li> du journal
 
-let code = nettoyerCode(location.hash.slice(1)) || memo.lire('vocal-code') || nouveauCode();
 let micro = null, ctx = null, enAppel = false, microCoupe = false;
 let morceaux = [], frames = 0, crete = 0, debutSegment = 0, debutAppel = 0;
 let peer = null, conn = null, appel = null, tentative = null;
@@ -26,17 +25,12 @@ let appelOk = false, appelDepuis = 0, dernierSigne = 0, idPrisLe = 0;
 let envoiEnCours = false, gardien = null, horloge = null, veille = null;
 
 el.brut.checked = memo.lire('vocal-brut') !== '0';
-afficherCode();
+el.lien.textContent = LIEN_ORDI.replace(/^https?:\/\//, '');
 chargerAttente();
 
 el.bouton.addEventListener('click', () => (enAppel ? envoyer() : demarrer()));
 el.raccrocher.addEventListener('click', raccrocher);
 el.partager.addEventListener('click', partagerLien);
-el.changerCode.addEventListener('click', () => {
-  if (!confirm("Créer un nouveau code ? L'ordinateur devra ouvrir le nouveau lien.")) return;
-  memo.ecrire('vocal-code', nouveauCode());
-  location.replace(location.pathname);
-});
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible' || !enAppel) return;
@@ -48,36 +42,24 @@ addEventListener('beforeunload', e => {
   if (enAppel || attente.length) { e.preventDefault(); e.returnValue = ''; }
 });
 
-// ---------- Salon ----------
-
-function lienEcoute() {
-  return new URL('ecoute.html#' + code, location.href).href;
-}
-
-function afficherCode() {
-  memo.ecrire('vocal-code', code);
-  history.replaceState(null, '', '#' + code);
-  el.code.textContent = code;
-  el.lien.textContent = lienEcoute();
-}
+// ---------- Lien de l'ordinateur ----------
 
 async function partagerLien() {
-  const url = lienEcoute();
   if (navigator.share) {
-    try { return await navigator.share({ title: 'Écoute mon appel', url }); }
+    try { return await navigator.share({ title: 'Écoute mon appel', url: LIEN_ORDI }); }
     catch (e) { if (e.name === 'AbortError') return; }
   }
   try {
-    await navigator.clipboard.writeText(url);
+    await navigator.clipboard.writeText(LIEN_ORDI);
     el.partager.textContent = 'Lien copié ✓';
-    setTimeout(() => { el.partager.textContent = "Envoyer le lien d'écoute"; }, 1500);
+    setTimeout(() => { el.partager.textContent = "Envoyer le lien à l'ordinateur"; }, 1500);
   } catch {
-    prompt('Copie ce lien :', url);
+    prompt('Copie ce lien :', LIEN_ORDI);
   }
 }
 
 async function chargerAttente() {
-  const restants = (await base.tout()).filter(v => v.code === code).sort((a, b) => a.debut - b.debut);
+  const restants = (await base.tout()).sort((a, b) => a.debut - b.debut);
   for (const { wav, ...v } of restants) {
     attente.push(v);
     ligne(v, 'En attente', 'attente');
@@ -169,9 +151,9 @@ async function envoyer() {
   flash('Envoyé ✓', 'envoye');
   navigator.vibrate?.(40);
 
-  const numero = Number(memo.lire('vocal-num-' + code) || 0) + 1;
-  memo.ecrire('vocal-num-' + code, numero);
-  const v = { id: nouvelId(), code, numero, debut, duree: n / sr, nom: nomFichier(numero, debut) };
+  const numero = Number(memo.lire('vocal-num') || 0) + 1;
+  memo.ecrire('vocal-num', numero);
+  const v = { id: nouvelId(), numero, debut, duree: n / sr, nom: nomFichier(numero, debut) };
   const wav = encoderWav(pcm, n, sr);
   donnees.set(v.id, wav);
   try { await base.mettre({ ...v, wav }); } catch (e) { console.warn('Sauvegarde locale impossible', e); }
@@ -233,7 +215,7 @@ async function garderEcranAllume() {
 
 function demarrerReseau() {
   if (!peer || peer.destroyed) {
-    peer = new Peer(idTelephone(code), optionsPeer());
+    peer = new Peer(ID_TELEPHONE, optionsPeer());
     peer.on('open', surveiller);
     peer.on('disconnected', majEtat);
     peer.on('error', erreurPeer);
@@ -284,7 +266,7 @@ function surveiller() {
 
 function essayerConnexion() {
   if (tentative || liaisonOuverte() || !peer?.open) return;
-  const c = tentative = peer.connect(idOrdi(code), { serialization: 'raw', reliable: true });
+  const c = tentative = peer.connect(ID_ORDI, { serialization: 'raw', reliable: true });
   const abandon = setTimeout(() => {
     if (!c.open) c.close();
     if (tentative === c) tentative = null;
@@ -341,7 +323,7 @@ function debrancher() {
 
 function lancerAppel() {
   if (appel || !micro || !peer?.open) return;
-  const a = peer.call(idOrdi(code), micro, { sdpTransform: opusHauteQualite });
+  const a = peer.call(ID_ORDI, micro, { sdpTransform: opusHauteQualite });
   if (!a) return;
   appel = a;
   appelOk = false;

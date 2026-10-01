@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#157347">
+  <title>Vocal</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icone.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="tel">
+    <header class="tel-haut">
+      <div class="etat" id="etat" data-ton="neutre">
+        <span class="pastille"></span><span id="etat-texte">Prêt</span>
+      </div>
+      <span class="chrono" id="chrono"></span>
+      <button class="raccrocher" id="raccrocher" hidden>Raccrocher</button>
+    </header>
+
+    <main class="tel-milieu">
+      <section class="accueil" id="accueil">
+        <h1>Vocal</h1>
+        <p class="intro">Parle en direct avec l'ordinateur. Chaque appui sur le gros bouton lui envoie l'enregistrement depuis l'appui précédent.</p>
+        <div class="carte">
+          <button class="bouton-secondaire large" id="partager">Envoyer le lien à l'ordinateur</button>
+          <p class="lien" id="lien"></p>
+        </div>
+        <label class="option">
+          <input type="checkbox" id="son-brut" checked>
+          <span><strong>Son brut</strong><br>Enregistrement fidèle, sans anti-bruit ni anti-écho. Mets des écouteurs, sinon décoche.</span>
+        </label>
+        <p class="erreur" id="erreur" hidden></p>
+      </section>
+
+      <section class="direct" id="direct" hidden>
+        <div class="niveau" aria-hidden="true"><div class="niveau-barre" id="niveau"></div></div>
+        <p class="alerte" id="alerte" hidden></p>
+      </section>
+
+      <section class="journal" id="journal" hidden>
+        <h2>Envois</h2>
+        <ol class="liste" id="liste"></ol>
+      </section>
+    </main>
+
+    <button class="gros-bouton" id="gros-bouton">
+      <span class="bouton-titre" id="bouton-titre">Démarrer l'appel</span>
+      <span class="bouton-sous" id="bouton-sous">Le micro s'active, l'enregistrement commence</span>
+    </button>
+  </div>
+
+  <audio id="son-distant" autoplay playsinline></audio>
+
+  <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+  <script src="commun.js"></script>
+  <script src="telephone.js"></script>
+</body>
+</html>

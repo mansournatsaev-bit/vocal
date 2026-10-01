@@ -6,13 +6,17 @@
 //  { urls: 'turn:exemple.com:3478', username: '…', credential: '…' }]
 const ICE_SERVERS = null;
 
-const PREFIXE = 'vocalbtn-v1-';
 const ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 const TAILLE_MORCEAU = 16 * 1024;  // taille des paquets envoyés sur le canal de données
 const DELAI_SILENCE = 20000;       // ms sans nouvelles de l'autre côté avant de couper la liaison
 
-const idTelephone = code => PREFIXE + code + '-tel';
-const idOrdi = code => PREFIXE + code + '-pc';
+// Un seul salon par site, déduit de son adresse : le lien suffit, sans code.
+// Ex. mansournatsaev-bit.github.io/vocal/ → « mansournatsaev-bit-github-io-vocal ».
+const SALON = (location.host + location.pathname.replace(/[^/]*$/, ''))
+  .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+const ID_TELEPHONE = 'vocalbtn-v1-' + SALON + '-tel';
+const ID_ORDI = 'vocalbtn-v1-' + SALON + '-pc';
+const LIEN_ORDI = new URL('./', location.href).href;
 
 function optionsPeer() {
   return ICE_SERVERS ? { config: { iceServers: ICE_SERVERS } } : {};
@@ -27,17 +31,10 @@ const memo = {
   ecrire(cle, valeur) { try { localStorage.setItem(cle, valeur); } catch {} },
 };
 
-function nouveauCode(longueur = 6) {
-  const alea = crypto.getRandomValues(new Uint32Array(longueur));
-  return Array.from(alea, x => ALPHABET[x % ALPHABET.length]).join('');
-}
-
-function nettoyerCode(texte) {
-  return (texte || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 16);
-}
-
 function nouvelId() {
-  return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + nouveauCode(12);
+  if (crypto.randomUUID) return crypto.randomUUID();
+  const alea = crypto.getRandomValues(new Uint32Array(12));
+  return Date.now().toString(36) + Array.from(alea, x => ALPHABET[x % ALPHABET.length]).join('');
 }
 
 function duree(secondes) {

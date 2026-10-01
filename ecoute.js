@@ -1,61 +1,51 @@
-// Page ordinateur : répond à l'appel du téléphone et accumule les vocaux reçus.
+// Page ordinateur : s'ouvre avec le lien du téléphone et entend l'appel tout de suite.
+// Les vocaux reçus s'empilent dans l'ordre : clic = télécharger, glisser = déposer où on veut.
 
 const $ = sel => document.querySelector(sel);
 const el = {
-  accueil: $('#accueil'), form: $('#form-code'), champ: $('#champ-code'),
-  salon: $('#salon'), salonInfo: $('#salon-info'), controles: $('#controles'),
-  etat: $('#etat'), etatTexte: $('#etat-texte'), chrono: $('#chrono'),
-  boutonMicro: $('#bouton-micro'), activerSon: $('#activer-son'),
-  reception: $('#reception'), receptionTexte: $('#reception-texte'), receptionBarre: $('#reception-barre'),
-  resume: $('#resume'), toutEffacer: $('#tout-effacer'), vocaux: $('#vocaux'), vide: $('#vide'),
-  son: $('#son-distant'),
+  etat: $('#etat'), etatTexte: $('#etat-texte'), chrono: $('#chrono'), noteMicro: $('#note-micro'),
+  zone: $('#zone-recu'), zoneTitre: $('#recu-titre'), zoneSous: $('#recu-sous'), zoneIndice: $('#recu-indice'),
+  zoneProgression: $('#recu-progression'), zoneBarre: $('#recu-barre'),
+  resume: $('#resume'), toutEffacer: $('#tout-effacer'), vocaux: $('#vocaux'),
+  activerSon: $('#activer-son'), son: $('#son-distant'),
 };
 
 const base = new Base('vocal-ecoute');
 const affiches = new Map();  // id → { vocal, li, url }
-
 const liaisons = new Map();  // liaison ouverte avec le téléphone → dernier signe de vie (ms)
+const lecteur = new Audio();
 
-let code = '';
-let peer = null, appel = null, micro = null, tentative = null;
+let peer = null, appel = null, micro = null, microPret = null, tentative = null;
 let debutAppel = 0, termine = false, idPrisLe = 0;
-let reception = null, nonLus = 0, dessinPrevu = false;
+let reception = null, dernier = null, enLecture = null, nonLus = 0, dessinPrevu = false;
 
-el.champ.value = nettoyerCode(location.hash.slice(1)) || memo.lire('vocal-code-ecoute') || '';
-if (!el.champ.value) el.champ.focus();
-
-el.form.addEventListener('submit', e => {
-  e.preventDefault();
-  const c = nettoyerCode(el.champ.value);
-  if (!c) return el.champ.focus();
-  rejoindre(c);
-});
-el.boutonMicro.addEventListener('click', basculerMicro);
-el.activerSon.addEventListener('click', jouer);
 el.toutEffacer.addEventListener('click', toutEffacer);
+rendreGlissable(el.zone, () => dernier);
+lecteur.addEventListener('ended', () => majLecture(null));
+// Si le navigateur a bloqué le son de l'appel, le premier clic n'importe où le débloque.
+document.addEventListener('pointerdown', () => { if (el.son.srcObject && el.son.paused) jouer(); });
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) { nonLus = 0; majTitre(); }
 });
 
-async function rejoindre(c) {
-  if (!window.Peer) return alert("PeerJS n'a pas pu se charger. Vérifie la connexion internet puis recharge la page.");
-  code = c;
-  memo.ecrire('vocal-code-ecoute', code);
-  history.replaceState(null, '', '#' + code);
-  el.accueil.hidden = true;
-  el.salon.hidden = false;
-  el.controles.hidden = false;
-  el.salonInfo.textContent = 'Salon ' + code;
+majZone();
+demarrer();
 
-  try {
-    micro = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch {
-    micro = null;  // on peut écouter sans micro
-  }
-  majMicro();
+async function demarrer() {
   await chargerVocaux();
+  if (!window.Peer) {
+    el.etatTexte.textContent = 'Connexion impossible, recharge la page';
+    el.etat.dataset.ton = 'erreur';
+    return;
+  }
 
-  peer = new Peer(idOrdi(code), optionsPeer());
+  // Le micro est demandé tout de suite ; l'appel attend la réponse avant de décrocher.
+  microPret = navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(flux => { micro = flux; })
+    .catch(() => { micro = null; })
+    .finally(() => { el.noteMicro.hidden = !!micro; });
+
+  peer = new Peer(ID_ORDI, optionsPeer());
   peer.on('open', surveiller);
   peer.on('disconnected', majEtat);
   peer.on('error', err => {
@@ -103,17 +93,16 @@ function oublier(c) {
 // En arrivant (puis toutes les 3 s tant qu'on n'est pas relié), on essaie aussi de joindre le téléphone.
 function appelerTelephone() {
   if (tentative || liaisons.size || !peer?.open) return;
-  const c = tentative = peer.connect(idTelephone(code), { serialization: 'raw', reliable: true });
+  const c = tentative = peer.connect(ID_TELEPHONE, { serialization: 'raw', reliable: true });
   const fin = () => { clearTimeout(abandon); if (tentative === c) tentative = null; };
   const abandon = setTimeout(() => { if (!c.open) c.close(); fin(); }, 8000);
   c.on('open', fin);
   accueillir(c);
 }
 
-function repondre(a) {
+async function repondre(a) {
   if (appel && appel !== a) appel.close();
   appel = a;
-  a.answer(micro || undefined, { sdpTransform: opusHauteQualite });
   a.on('stream', flux => {
     if (appel !== a) return;
     el.son.srcObject = flux;
@@ -131,6 +120,20 @@ function repondre(a) {
   };
   a.on('close', fin);
   a.on('error', fin);
+  // On décroche tout de suite pour entendre le téléphone. Si le micro n'est pas encore autorisé,
+  // on envoie une piste muette, remplacée par le micro dès que la personne l'autorise.
+  a.answer(micro || pisteMuette(), { sdpTransform: opusHauteQualite });
+  if (micro) return;
+  await microPret;
+  const piste = micro?.getAudioTracks()[0];
+  const envoi = piste && appel === a && a.peerConnection?.getSenders().find(s => s.track?.kind === 'audio');
+  if (envoi) envoi.replaceTrack(piste);
+}
+
+let muette = null;
+function pisteMuette() {
+  muette ??= new AudioContext().createMediaStreamDestination().stream;
+  return muette;
 }
 
 function surveiller() {
@@ -178,7 +181,7 @@ async function finaliser(c, id) {
   if (!affiches.has(id) && !(await base.lire(id))) {
     const m = r.meta;
     const vocal = {
-      id, code, numero: Number(m.numero) || 0, debut: Number(m.debut) || Date.now(),
+      id, numero: Number(m.numero) || 0, debut: Number(m.debut) || Date.now(),
       duree: Number(m.duree) || 0, nom: String(m.nom || `vocal-${id}.wav`), recuLe: Date.now(),
       blob: new Blob(r.morceaux, { type: 'audio/wav' }),
     };
@@ -186,28 +189,11 @@ async function finaliser(c, id) {
       await base.mettre(vocal);
     } catch (e) {
       console.warn('Sauvegarde impossible', e);
-      vocal.nonSauve = true;
     }
     afficherVocal(vocal, true);
     if (document.hidden) { nonLus++; majTitre(); }
   }
   envoyerMsg(c, { t: 'recu', id });
-}
-
-// ---------- Micro de l'ordinateur ----------
-
-function basculerMicro() {
-  const piste = micro?.getAudioTracks()[0];
-  if (!piste) return;
-  piste.enabled = !piste.enabled;
-  majMicro();
-}
-
-function majMicro() {
-  const piste = micro?.getAudioTracks()[0];
-  el.boutonMicro.disabled = !piste;
-  el.boutonMicro.textContent = !piste ? 'Pas de micro' : piste.enabled ? 'Couper mon micro' : 'Réactiver mon micro';
-  el.boutonMicro.dataset.coupe = piste && !piste.enabled ? 'oui' : 'non';
 }
 
 function jouer() {
@@ -219,56 +205,143 @@ function jouer() {
 // ---------- Vocaux ----------
 
 async function chargerVocaux() {
-  const tous = (await base.tout()).filter(v => v.code === code);
-  for (const v of tous) afficherVocal(v, false);
+  for (const v of await base.tout()) afficherVocal(v, false);
 }
+
+const ICONE_ONDE = '<svg class="fichier-icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4"/></svg>';
+const ICONE_LECTURE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
+const ICONE_PAUSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>';
 
 function afficherVocal(v, nouveau) {
   const url = URL.createObjectURL(v.blob);
   const li = document.createElement('li');
-  li.className = 'vocal' + (nouveau ? ' nouveau' : '');
+  li.className = 'fichier' + (nouveau ? ' nouveau' : '');
   li.innerHTML = `
-    <div class="vocal-tete">
-      <span class="vocal-num"></span>
-      <span class="vocal-meta"></span>
-      <a class="bouton-secondaire petit-bouton">Télécharger</a>
-    </div>
-    <audio controls preload="metadata"></audio>
-    <p class="vocal-alerte" hidden>Pas sauvegardé dans le navigateur : télécharge-le pour le garder.</p>`;
-  li.querySelector('.vocal-num').textContent = 'Vocal ' + v.numero;
-  li.querySelector('.vocal-meta').textContent = `${duree(v.duree)} · ${dateHeure(v.debut)}`;
+    <a class="fichier-lien" draggable="true" title="Clique pour télécharger, ou glisse le fichier où tu veux">
+      ${ICONE_ONDE}
+      <span class="fichier-texte"><span class="fichier-nom"></span><span class="fichier-meta"></span></span>
+      <span class="fichier-action">Télécharger</span>
+    </a>
+    <button class="ecouter" aria-label="Écouter">${ICONE_LECTURE}</button>`;
+  li.querySelector('.fichier-nom').textContent = 'Vocal ' + v.numero;
+  li.querySelector('.fichier-meta').textContent = `${duree(v.duree)} · ${dateHeure(v.debut)}`;
   const lien = li.querySelector('a');
   lien.href = url;
   lien.download = v.nom;
-  li.querySelector('audio').src = url;
-  li.querySelector('.vocal-alerte').hidden = !v.nonSauve;
+  rendreGlissable(lien, () => v);
+  li.querySelector('.ecouter').addEventListener('click', () => ecouter(v.id));
 
-  // Le plus récent en haut.
+  // Dans l'ordre d'enregistrement : le plus récent en bas.
   const suivant = [...affiches.values()]
-    .filter(a => a.vocal.debut < v.debut)
-    .sort((a, b) => b.vocal.debut - a.vocal.debut)[0];
+    .filter(a => a.vocal.debut > v.debut)
+    .sort((a, b) => a.vocal.debut - b.vocal.debut)[0];
   el.vocaux.insertBefore(li, suivant ? suivant.li : null);
   affiches.set(v.id, { vocal: v, li, url });
+
+  if (!dernier || v.debut >= dernier.debut) dernier = v;
+  if (nouveau) {
+    li.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    el.zone.classList.remove('flash');
+    void el.zone.offsetWidth;  // relance l'animation
+    el.zone.classList.add('flash');
+  }
   majResume();
+  majZone();
+}
+
+// Glisser un vocal le dépose comme un vrai fichier : sur le bureau, dans un dossier ou dans une page web.
+function rendreGlissable(lien, obtenirVocal) {
+  lien.addEventListener('dragstart', e => {
+    const v = obtenirVocal();
+    const a = v && affiches.get(v.id);
+    if (!a) return e.preventDefault();
+    try { e.dataTransfer.items.add(new File([v.blob], v.nom, { type: 'audio/wav' })); } catch {}
+    e.dataTransfer.setData('DownloadURL', `audio/wav:${v.nom}:${a.url}`);
+    e.dataTransfer.effectAllowed = 'copy';
+  });
+}
+
+function ecouter(id) {
+  if (enLecture === id) {
+    lecteur.pause();
+    return majLecture(null);
+  }
+  lecteur.src = affiches.get(id).url;
+  lecteur.play().then(() => majLecture(id)).catch(() => majLecture(null));
+}
+
+function majLecture(id) {
+  enLecture = id;
+  for (const [cle, a] of affiches) {
+    const actif = cle === id;
+    a.li.classList.toggle('en-lecture', actif);
+    const bouton = a.li.querySelector('.ecouter');
+    bouton.innerHTML = actif ? ICONE_PAUSE : ICONE_LECTURE;
+    bouton.setAttribute('aria-label', actif ? 'Pause' : 'Écouter');
+  }
 }
 
 async function toutEffacer() {
-  if (!affiches.size || !confirm(`Effacer les ${affiches.size} vocaux de ce navigateur ?`)) return;
+  if (!affiches.size || !confirm(`Effacer les ${affiches.size} vocaux ?`)) return;
+  lecteur.pause();
+  majLecture(null);
   for (const [id, a] of affiches) {
     URL.revokeObjectURL(a.url);
     a.li.remove();
     await base.suppr(id).catch(() => {});
   }
   affiches.clear();
+  dernier = null;
   majResume();
+  majZone();
 }
 
 function majResume() {
   const n = affiches.size;
   const total = [...affiches.values()].reduce((s, a) => s + a.vocal.duree, 0);
-  el.resume.textContent = n ? `${n} ${n > 1 ? 'vocaux' : 'vocal'} · ${duree(total)} au total` : 'Aucun vocal pour l\'instant';
-  el.vide.hidden = n > 0;
+  el.resume.textContent = n ? `${n} ${n > 1 ? 'vocaux' : 'vocal'} · ${duree(total)}` : 'Vocaux reçus';
   el.toutEffacer.hidden = n === 0;
+}
+
+// ---------- Zone « Tu as reçu » (le tiers haut de l'écran) ----------
+
+function majZone() {
+  const z = el.zone;
+  el.zoneProgression.hidden = true;
+  let titre, sous = '', indice = '';
+
+  if (reception) {
+    const { meta, recu } = reception;
+    const p = meta.taille ? recu / meta.taille : 0;
+    z.dataset.etat = 'reception';
+    titre = `Réception du vocal ${meta.numero}…`;
+    sous = `${duree(meta.duree)} · ${Math.round(p * 100)} %`;
+    el.zoneProgression.hidden = false;
+    el.zoneBarre.style.transform = `scaleX(${p})`;
+  } else if (dernier) {
+    z.dataset.etat = 'recu';
+    titre = 'Tu as reçu un vocal';
+    sous = `Vocal ${dernier.numero} · ${duree(dernier.duree)} · ${heure(dernier.debut)}`;
+    indice = 'Clique pour le télécharger, ou glisse-le où tu veux';
+  } else {
+    z.dataset.etat = 'vide';
+    titre = 'Aucun vocal pour l\'instant';
+    sous = 'Les vocaux envoyés depuis le téléphone arriveront ici';
+  }
+
+  const a = z.dataset.etat === 'recu' && affiches.get(dernier.id);
+  if (a) {
+    z.href = a.url;
+    z.download = dernier.nom;
+    z.draggable = true;
+  } else {
+    z.removeAttribute('href');
+    z.removeAttribute('download');
+    z.draggable = false;
+  }
+  el.zoneTitre.textContent = titre;
+  el.zoneSous.textContent = sous;
+  el.zoneIndice.textContent = indice;
 }
 
 function afficherReception() {
@@ -276,12 +349,7 @@ function afficherReception() {
   dessinPrevu = true;
   requestAnimationFrame(() => {
     dessinPrevu = false;
-    if (!reception) return void (el.reception.hidden = true);
-    const { meta, recu } = reception;
-    const p = meta.taille ? recu / meta.taille : 0;
-    el.reception.hidden = false;
-    el.receptionTexte.textContent = `Réception du vocal ${meta.numero} (${duree(meta.duree)})… ${Math.round(p * 100)} %`;
-    el.receptionBarre.style.transform = `scaleX(${p})`;
+    majZone();
   });
 }
 
@@ -291,12 +359,12 @@ function majEtat() {
   let texte, ton;
   if (!peer?.open) {
     [texte, ton] = Date.now() - idPrisLe < 10000
-      ? ['Ce salon est déjà ouvert dans un autre onglet ? Nouvel essai…', 'erreur']
-      : ['Connexion au serveur…', 'attente'];
+      ? ['Déjà ouvert dans un autre onglet ? Nouvel essai…', 'erreur']
+      : ['Connexion…', 'attente'];
   } else if (appel && debutAppel) {
     [texte, ton] = ['En appel', 'ok'];
   } else if (liaisons.size) {
-    [texte, ton] = termine ? ['Appel terminé', 'neutre'] : ['Téléphone connecté, audio en cours…', 'attente'];
+    [texte, ton] = termine ? ['Appel terminé', 'neutre'] : ['Téléphone connecté', 'attente'];
   } else {
     [texte, ton] = termine ? ['Appel terminé', 'neutre'] : ['En attente du téléphone…', 'attente'];
   }
