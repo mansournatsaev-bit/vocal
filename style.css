@@ -121,6 +121,15 @@ h2 { font-size: 15px; }
 }
 
 .direct { display: flex; flex-direction: column; gap: 10px; padding-top: 8px; }
+.niveaux {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--doux);
+}
 .niveau { height: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
 .niveau-barre {
   height: 100%;
@@ -201,6 +210,9 @@ h2 { font-size: 15px; }
   padding: 0 16px;
 }
 .pc-haut { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 16px 0; }
+.pc-haut .niveaux { flex: 1 1 240px; max-width: 340px; margin-left: auto; gap: 6px 10px; }
+.pc-haut .niveau { height: 8px; }
+.note-micro { flex-basis: 100%; }
 
 /* « Tu as reçu » : tout le tiers haut de l'écran. */
 .zone-recu {

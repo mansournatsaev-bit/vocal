@@ -7,7 +7,7 @@
   <title>Vocal</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icone.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
   <div class="tel">
@@ -21,7 +21,12 @@
 
     <main class="tel-milieu">
       <section class="direct">
-        <div class="niveau" aria-hidden="true"><div class="niveau-barre" id="niveau"></div></div>
+        <div class="niveaux" aria-hidden="true">
+          <span>Toi</span>
+          <div class="niveau"><div class="niveau-barre" id="niveau"></div></div>
+          <span>Ordinateur</span>
+          <div class="niveau"><div class="niveau-barre" id="niveau-ordi"></div></div>
+        </div>
         <p class="alerte" id="alerte" hidden></p>
       </section>
 
@@ -37,10 +42,11 @@
     </button>
   </div>
 
+  <div class="voile" id="voile" hidden>Touche l'écran pour entendre l'ordinateur</div>
   <audio id="son-distant" autoplay playsinline></audio>
 
   <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
-  <script src="commun.js"></script>
-  <script src="telephone.js"></script>
+  <script src="commun.js?v=6"></script>
+  <script src="telephone.js?v=6"></script>
 </body>
 </html>

@@ -9,7 +9,7 @@
     if (/Android|iPhone|iPad/i.test(navigator.userAgent)) location.replace('tel.html');
   </script>
   <link rel="icon" href="icone.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
   <div class="pc">
@@ -18,7 +18,13 @@
         <span class="pastille"></span><span id="etat-texte">Connexion…</span>
       </div>
       <span class="chrono" id="chrono"></span>
-      <span class="petit" id="note-micro" hidden>Micro non autorisé : le téléphone ne t'entend pas.</span>
+      <div class="niveaux" id="niveaux" aria-hidden="true">
+        <span>Ton micro</span>
+        <div class="niveau"><div class="niveau-barre" id="niveau-micro"></div></div>
+        <span>Téléphone</span>
+        <div class="niveau"><div class="niveau-barre" id="niveau-tel"></div></div>
+      </div>
+      <p class="alerte note-micro" id="note-micro">Clique sur « Autoriser » en haut de la page pour que le téléphone t'entende.</p>
     </header>
 
     <a class="zone-recu" id="zone-recu" data-etat="vide">
@@ -41,7 +47,7 @@
   <audio id="son-distant" autoplay></audio>
 
   <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
-  <script src="commun.js"></script>
-  <script src="ecoute.js"></script>
+  <script src="commun.js?v=6"></script>
+  <script src="ecoute.js?v=6"></script>
 </body>
 </html>

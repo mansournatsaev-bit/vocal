@@ -4,7 +4,8 @@
 const $ = sel => document.querySelector(sel);
 const el = {
   etat: $('#etat'), etatTexte: $('#etat-texte'), chrono: $('#chrono'), raccrocher: $('#raccrocher'),
-  niveau: $('#niveau'), alerte: $('#alerte'), journal: $('#journal'), liste: $('#liste'),
+  niveau: $('#niveau'), niveauOrdi: $('#niveau-ordi'), alerte: $('#alerte'),
+  journal: $('#journal'), liste: $('#liste'), voile: $('#voile'),
   bouton: $('#gros-bouton'), boutonTitre: $('#bouton-titre'), boutonSous: $('#bouton-sous'),
   son: $('#son-distant'),
 };
@@ -17,7 +18,7 @@ const lignes = new Map();    // id → <li> du journal
 
 let micro = null, ctx = null, lecteurMicro = null, tauxEch = 48000;
 let enAppel = false, demarrage = false, microCoupe = false, erreurMicro = '';
-let morceaux = [], frames = 0, crete = 0, dernierPCM = 0, debutSegment = 0, debutAppel = 0;
+let morceaux = [], frames = 0, crete = 0, creteOrdi = 0, dernierPCM = 0, debutSegment = 0, debutAppel = 0;
 let peer = null, conn = null, appel = null, tentative = null;
 let appelOk = false, appelDepuis = 0, dernierSigne = 0, connDepuis = 0, idPrisLe = 0;
 let envoiEnCours = false, gardien = null, horloge = null, veille = null;
@@ -31,7 +32,7 @@ el.raccrocher.addEventListener('click', raccrocher);
 // Les navigateurs coupent le son tant qu'on n'a pas touché la page : le premier toucher le débloque.
 document.addEventListener('pointerdown', () => {
   ctx?.resume();
-  if (el.son.srcObject && el.son.paused) el.son.play().catch(() => {});
+  if (el.son.srcObject && el.son.paused) el.son.play().then(rafraichir).catch(() => {});
 });
 
 document.addEventListener('visibilitychange', () => {
@@ -164,17 +165,17 @@ function rafraichir() {
   if (!enAppel) return;
   el.boutonSous.textContent = `${duree(frames / tauxEch)} à envoyer`;
   el.chrono.textContent = duree((Date.now() - debutAppel) / 1000);
-  const db = crete > 0 ? 20 * Math.log10(crete / 32768) : -100;
-  el.niveau.style.transform = `scaleX(${Math.max(0, Math.min(1, (db + 60) / 60))})`;
-  crete = 0;
+  el.niveau.style.transform = `scaleX(${largeurNiveau(crete / 32768)})`;
+  el.niveauOrdi.style.transform = `scaleX(${largeurNiveau(creteOrdi)})`;
+  crete = creteOrdi = 0;
 
   let alerte = '';
   if (microCoupe) alerte = 'Le micro a été coupé par le téléphone. Raccroche puis touche « Rappeler ».';
   else if (ctx && ctx.state !== 'running') alerte = 'Touche l\'écran pour lancer l\'enregistrement.';
   else if (Date.now() - dernierPCM > 1500) alerte = 'Micro en pause : garde l\'appli au premier plan.';
-  else if (el.son.srcObject && el.son.paused) alerte = 'Touche l\'écran pour entendre l\'ordinateur.';
   el.alerte.hidden = !alerte;
   el.alerte.textContent = alerte;
+  el.voile.hidden = !(el.son.srcObject && el.son.paused);
 }
 
 async function envoyer() {
@@ -230,8 +231,9 @@ async function raccrocher() {
 
   el.raccrocher.hidden = true;
   el.alerte.hidden = true;
+  el.voile.hidden = true;
   el.chrono.textContent = '';
-  el.niveau.style.transform = 'scaleX(0)';
+  el.niveau.style.transform = el.niveauOrdi.style.transform = 'scaleX(0)';
   el.boutonTitre.textContent = 'Rappeler';
   el.boutonSous.textContent = 'Touche pour reprendre l\'appel';
   verifierFin();
@@ -374,10 +376,11 @@ function lancerAppel() {
   appelOk = false;
   appelDepuis = Date.now();
   a.on('stream', flux => {
-    if (appel !== a) return;
+    if (appel !== a || el.son.srcObject === flux) return;
     appelOk = true;
     el.son.srcObject = flux;
     el.son.play().catch(() => {});
+    suivreNiveau(flux.getAudioTracks()[0], c => { if (appel === a && c > creteOrdi) creteOrdi = c; });
     majEtat();
   });
   a.on('close', () => { if (appel === a) couperAppel(); });

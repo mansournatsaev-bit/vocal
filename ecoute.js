@@ -4,6 +4,7 @@
 const $ = sel => document.querySelector(sel);
 const el = {
   etat: $('#etat'), etatTexte: $('#etat-texte'), chrono: $('#chrono'), noteMicro: $('#note-micro'),
+  niveauMicro: $('#niveau-micro'), niveauTel: $('#niveau-tel'),
   zone: $('#zone-recu'), zoneTitre: $('#recu-titre'), zoneSous: $('#recu-sous'), zoneIndice: $('#recu-indice'),
   zoneProgression: $('#recu-progression'), zoneBarre: $('#recu-barre'),
   resume: $('#resume'), toutEffacer: $('#tout-effacer'), vocaux: $('#vocaux'),
@@ -18,6 +19,7 @@ const lecteur = new Audio();
 let peer = null, appel = null, micro = null, microPret = null, tentative = null;
 let debutAppel = 0, termine = false, idPrisLe = 0;
 let reception = null, dernier = null, enLecture = null, nonLus = 0, dessinPrevu = false;
+let creteMicro = 0, creteTel = 0;
 
 el.toutEffacer.addEventListener('click', toutEffacer);
 rendreGlissable(el.zone, () => dernier);
@@ -39,16 +41,30 @@ async function demarrer() {
     return;
   }
 
-  // Le micro est demandé tout de suite ; l'appel attend la réponse avant de décrocher.
+  // Le micro est demandé tout de suite. L'appel n'attend pas la réponse : tant que le micro
+  // n'est pas autorisé, le téléphone entend du silence (voir repondre).
   microPret = navigator.mediaDevices.getUserMedia({ audio: true })
-    .then(flux => { micro = flux; })
-    .catch(() => { micro = null; })
-    .finally(() => { el.noteMicro.hidden = !!micro; });
+    .then(flux => {
+      micro = flux;
+      el.noteMicro.hidden = true;
+      suivreNiveau(flux.getAudioTracks()[0], c => { if (c > creteMicro) creteMicro = c; });
+    })
+    .catch(() => {
+      micro = null;
+      el.noteMicro.textContent = 'Micro refusé : le téléphone ne t\'entend pas. Autorise-le avec l\'icône à gauche de l\'adresse, puis recharge la page.';
+    });
 
   creerPeer();
   setInterval(surveiller, 3000);
   setInterval(majChrono, 1000);
+  setInterval(majNiveaux, 100);
   majEtat();
+}
+
+function majNiveaux() {
+  el.niveauMicro.style.transform = `scaleX(${largeurNiveau(creteMicro)})`;
+  el.niveauTel.style.transform = `scaleX(${largeurNiveau(creteTel)})`;
+  creteMicro = creteTel = 0;
 }
 
 // ---------- Réseau ----------
@@ -109,10 +125,11 @@ async function repondre(a) {
   if (appel && appel !== a) appel.close();
   appel = a;
   a.on('stream', flux => {
-    if (appel !== a) return;
+    if (appel !== a || el.son.srcObject === flux) return;
     el.son.srcObject = flux;
     debutAppel = Date.now();
     jouer();
+    suivreNiveau(flux.getAudioTracks()[0], c => { if (appel === a && c > creteTel) creteTel = c; });
     majEtat();
   });
   const fin = () => {

@@ -68,6 +68,32 @@ function opusHauteQualite(sdp) {
   return sdp.replace(rtpmap[0], `${rtpmap[0]}\r\na=fmtp:${pt} ${voulu.join(';')}`);
 }
 
+// Suit le niveau sonore d'une piste sans la jouer, donc sans attendre que la page soit touchée.
+// surCrete reçoit le pic (0 à 1) de chaque trame audio.
+function suivreNiveau(piste, surCrete) {
+  if (!window.MediaStreamTrackProcessor || !piste) return;
+  const lecteur = new MediaStreamTrackProcessor({ track: piste }).readable.getReader();
+  (async () => {
+    for (;;) {
+      let r;
+      try { r = await lecteur.read(); } catch { return; }
+      if (r.done) return;
+      const f = new Float32Array(r.value.numberOfFrames);
+      try { r.value.copyTo(f, { planeIndex: 0, format: 'f32-planar' }); } catch {}
+      r.value.close();
+      let crete = 0;
+      for (let i = 0; i < f.length; i += 4) crete = Math.max(crete, Math.abs(f[i]));
+      surCrete(crete);
+    }
+  })();
+}
+
+// Largeur d'une barre de niveau (0 à 1) sur une échelle de -60 dB à 0 dB.
+function largeurNiveau(crete) {
+  const db = crete > 0 ? 20 * Math.log10(crete) : -100;
+  return Math.max(0, Math.min(1, (db + 60) / 60));
+}
+
 // Petit stockage IndexedDB (clé : id). Retombe sur la mémoire si IndexedDB est indisponible.
 class Base {
   constructor(nom) {
