@@ -12,6 +12,18 @@ cliquer pour rejoindre.
   vocal ». Les vocaux arrivent dans l'ordre : clic = télécharger, glisser = le déposer où on veut
   (bureau, dossier, page web). **Tout effacer** vide la liste.
 
+## Appli Android (bouton volume)
+
+Un site ne peut pas utiliser les boutons de volume. L'appli **Vocal** (`vocal.apk`, à installer depuis
+https://mansournatsaev-bit.github.io/vocal/vocal.apk) affiche la même page téléphone et ajoute :
+
+- **volume + ou volume −** envoie le vocal, écran allumé comme écran éteint (bip-bip = envoyé) ;
+- le bouton pause/lecture des écouteurs envoie aussi le vocal ;
+- l'appel et l'enregistrement continuent écran éteint (notification « Appel en cours ») ;
+- le bouton **Écran noir** garde l'appel en cachant l'écran (double-toucher pour revenir).
+
+Pour quitter, balayer l'appli dans les applis récentes : ça raccroche. La touche Accueil la laisse tourner.
+
 Pas de serveur à installer : l'appel et les fichiers passent directement d'un appareil à l'autre
 (WebRTC, via le service gratuit PeerJS pour la mise en relation). Il y a un seul appel par site :
 un téléphone et un ordinateur à la fois.
