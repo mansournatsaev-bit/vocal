@@ -339,12 +339,17 @@ function appuiDistant() {
 }
 
 // Bouton physique (volume dans l'appli, ou écouteurs) : même effet que le gros bouton, avec un bip.
+// Renvoie ce qui s'est passé, que l'appli Android note dans son journal.
 function envoyerDepuisBouton() {
-  if (!enAppel || Date.now() - dernierAppuiDistant < 800) return;
+  if (!enAppel) return 'pas en appel';
+  if (Date.now() - dernierAppuiDistant < 800) return 'ignoré (deuxième appui trop rapproché)';
   dernierAppuiDistant = Date.now();
-  const assezLong = frames >= tauxEch * 0.5;
+  const secondes = frames / tauxEch;
+  const assezLong = secondes >= 0.5;
   envoyer();
   bip(assezLong);
+  return `${assezLong ? 'envoyé' : 'trop court'} : ${secondes.toFixed(1)} s, page ${document.visibilityState}, ` +
+    `liaison ${liaisonOuverte() ? 'ouverte' : 'fermée'}`;
 }
 
 // Petit signal dans les écouteurs : deux notes aiguës = envoyé, une note grave = trop court.
