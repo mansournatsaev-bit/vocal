@@ -5,7 +5,7 @@ const $ = sel => document.querySelector(sel);
 const el = {
   etat: $('#etat'), etatTexte: $('#etat-texte'), chrono: $('#chrono'), raccrocher: $('#raccrocher'),
   niveau: $('#niveau'), niveauOrdi: $('#niveau-ordi'), alerte: $('#alerte'),
-  journal: $('#journal'), liste: $('#liste'), voile: $('#voile'),
+  journal: $('#journal'), liste: $('#liste'), voile: $('#voile'), telecommande: $('#telecommande'),
   bouton: $('#gros-bouton'), boutonTitre: $('#bouton-titre'), boutonSous: $('#bouton-sous'),
   son: $('#son-distant'),
 };
@@ -19,9 +19,11 @@ const lignes = new Map();    // id → <li> du journal
 let micro = null, ctx = null, lecteurMicro = null, tauxEch = 48000;
 let enAppel = false, demarrage = false, microCoupe = false, erreurMicro = '';
 let morceaux = [], frames = 0, crete = 0, creteOrdi = 0, dernierPCM = 0, debutSegment = 0, debutAppel = 0;
+let perduSegment = 0;        // secondes de micro manquantes dans le segment en cours (remplacées par du silence)
 let peer = null, conn = null, appel = null, tentative = null;
 let appelOk = false, appelDepuis = 0, dernierSigne = 0, connDepuis = 0, idPrisLe = 0;
 let envoiEnCours = false, gardien = null, horloge = null, veille = null;
+let silence = null, sonsCtx = null, dernierAppuiDistant = 0;  // bouton des écouteurs
 
 chargerAttente();
 demarrer();
@@ -33,6 +35,9 @@ el.raccrocher.addEventListener('click', raccrocher);
 document.addEventListener('pointerdown', () => {
   ctx?.resume();
   if (el.son.srcObject && el.son.paused) el.son.play().then(rafraichir).catch(() => {});
+  sonsCtx ??= new AudioContext();
+  sonsCtx.resume();
+  if (enAppel) activerTelecommande();
 });
 
 document.addEventListener('visibilitychange', () => {
@@ -89,11 +94,13 @@ async function demarrer() {
   microCoupe = false;
   morceaux = [];
   frames = 0;
+  perduSegment = 0;
   dernierPCM = debutSegment = debutAppel = Date.now();
 
   el.raccrocher.hidden = false;
   el.bouton.disabled = false;
   garderEcranAllume();
+  activerTelecommande();
   clearInterval(horloge);
   horloge = setInterval(rafraichir, 100);
   demarrerReseau();
@@ -104,7 +111,7 @@ async function demarrer() {
 // sinon on passe par un AudioWorklet, que le navigateur peut laisser en pause jusqu'au premier toucher.
 async function brancherCapture(piste) {
   if (window.MediaStreamTrackProcessor) {
-    lecteurMicro = new MediaStreamTrackProcessor({ track: piste, maxBufferSize: 500 }).readable.getReader();
+    lecteurMicro = new MediaStreamTrackProcessor({ track: piste, maxBufferSize: 3000 }).readable.getReader();
     lireMicro(lecteurMicro);
     return;
   }
@@ -118,12 +125,23 @@ async function brancherCapture(piste) {
 }
 
 async function lireMicro(lecteur) {
+  let prochain = null;  // horodatage attendu de la trame suivante (µs)
   for (;;) {
     let r;
     try { r = await lecteur.read(); } catch { return; }
     if (r.done) return;
     const trame = r.value;
     tauxEch = trame.sampleRate;
+    // Trou dans le micro (page ralentie écran éteint, par exemple) : on le comble avec du silence
+    // pour garder la bonne durée, et on le compte pour l'afficher.
+    if (prochain !== null) {
+      const trou = (trame.timestamp - prochain) / 1e6;
+      if (trou > 0.05) {
+        recevoirPCM(new Int16Array(Math.round(Math.min(trou, 300) * tauxEch)));
+        perduSegment += trou;
+      }
+    }
+    prochain = trame.timestamp + trame.duration;
     recevoirPCM(versInt16(trame));
     trame.close();
   }
@@ -182,16 +200,18 @@ async function envoyer() {
   const sr = tauxEch;
   if (frames < sr * 0.5) return flash('Trop court', 'refus');
 
-  const pcm = morceaux, n = frames, debut = debutSegment;
+  const pcm = morceaux, n = frames, debut = debutSegment, perdu = perduSegment;
   morceaux = [];
   frames = 0;
+  perduSegment = 0;
   debutSegment = Date.now();
   flash('Envoyé ✓', 'envoye');
-  navigator.vibrate?.(40);
+  if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.(40);
 
   const numero = Number(memo.lire('vocal-num') || 0) + 1;
   memo.ecrire('vocal-num', numero);
-  const v = { id: nouvelId(), numero, debut, duree: n / sr, nom: nomFichier(numero, debut) };
+  majTelecommande(`Vocal ${numero} envoyé ✓`);
+  const v = { id: nouvelId(), numero, debut, duree: n / sr, perdu, nom: nomFichier(numero, debut) };
   const wav = encoderWav(pcm, n, sr);
   donnees.set(v.id, wav);
   try { await base.mettre({ ...v, wav }); } catch (e) { console.warn('Sauvegarde locale impossible', e); }
@@ -225,6 +245,7 @@ async function raccrocher() {
   envoyerMsg(conn, { t: 'raccroche' });
   couperAppel();
   arreterMicro();
+  desactiverTelecommande();
   clearInterval(horloge);
   veille?.release().catch(() => {});
   veille = null;
@@ -250,6 +271,81 @@ function arreterMicro() {
 
 async function garderEcranAllume() {
   try { veille = await navigator.wakeLock?.request('screen'); } catch {}
+}
+
+// ---------- Bouton des écouteurs ----------
+// Le bouton pause/lecture des écouteurs (et celui de l'écran de verrouillage) envoie le vocal.
+// Chrome ne transmet ces boutons qu'à une page qui joue un média : on joue donc un silence en boucle.
+
+function activerTelecommande() {
+  if (!('mediaSession' in navigator) || silence) return;
+  const blanc = encoderWav([new Int16Array(8000 * 10)], 8000 * 10, 8000);
+  silence = new Audio(URL.createObjectURL(new Blob([blanc], { type: 'audio/wav' })));
+  silence.loop = true;
+  silence.play().then(() => {
+    for (const action of ['play', 'pause', 'nexttrack', 'previoustrack']) {
+      try { navigator.mediaSession.setActionHandler(action, appuiDistant); } catch {}
+    }
+    majTelecommande('Appel en cours');
+    el.telecommande.hidden = false;
+  }).catch(() => {
+    // Lecture refusée tant que la page n'a pas été touchée : on réessaiera au premier toucher.
+    URL.revokeObjectURL(silence.src);
+    silence = null;
+  });
+}
+
+function desactiverTelecommande() {
+  if (!silence) return;
+  silence.pause();
+  URL.revokeObjectURL(silence.src);
+  silence = null;
+  for (const action of ['play', 'pause', 'nexttrack', 'previoustrack']) {
+    try { navigator.mediaSession.setActionHandler(action, null); } catch {}
+  }
+  navigator.mediaSession.playbackState = 'none';
+  el.telecommande.hidden = true;
+}
+
+function majTelecommande(titre) {
+  if (!silence) return;
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: titre,
+    artist: 'Bouton des écouteurs : envoyer le vocal',
+    artwork: [{ src: 'icone.svg', sizes: '512x512', type: 'image/svg+xml' }],
+  });
+  navigator.mediaSession.playbackState = 'playing';
+}
+
+function appuiDistant() {
+  // Le silence doit continuer à jouer, sinon Chrome ne nous transmet plus le bouton.
+  if (silence?.paused) silence.play().catch(() => {});
+  navigator.mediaSession.playbackState = 'playing';
+  if (!enAppel || Date.now() - dernierAppuiDistant < 800) return;
+  dernierAppuiDistant = Date.now();
+  const assezLong = frames >= tauxEch * 0.5;
+  envoyer();
+  bip(assezLong);
+}
+
+// Petit signal dans les écouteurs : deux notes aiguës = envoyé, une note grave = trop court.
+function bip(ok) {
+  try {
+    sonsCtx ??= new AudioContext();
+    sonsCtx.resume();
+    const t = sonsCtx.currentTime;
+    (ok ? [880, 1320] : [330]).forEach((frequence, i) => {
+      const o = sonsCtx.createOscillator(), g = sonsCtx.createGain();
+      const debut = t + i * 0.12;
+      o.frequency.value = frequence;
+      g.gain.setValueAtTime(0.0001, debut);
+      g.gain.exponentialRampToValueAtTime(0.12, debut + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, debut + 0.1);
+      o.connect(g).connect(sonsCtx.destination);
+      o.start(debut);
+      o.stop(debut + 0.11);
+    });
+  } catch {}
 }
 
 // ---------- Réseau : liaison de données + appel ----------
@@ -501,7 +597,9 @@ function ligne(v, statut, ton) {
     li = document.createElement('li');
     li.innerHTML = '<span class="num"></span><span class="info"></span><span class="statut"></span>';
     li.querySelector('.num').textContent = '#' + v.numero;
-    li.querySelector('.info').textContent = `${duree(v.duree)} · ${heure(v.debut)}`;
+    const coupe = v.perdu >= 0.1 ? ` · ${v.perdu.toFixed(1).replace('.', ',')} s coupées` : '';
+    li.querySelector('.info').textContent = `${duree(v.duree)} · ${heure(v.debut)}${coupe}`;
+    if (coupe) li.querySelector('.info').classList.add('coupe');
     el.liste.prepend(li);
     lignes.set(v.id, li);
     el.journal.hidden = false;
