@@ -120,15 +120,6 @@ h2 { font-size: 15px; }
   gap: 16px;
 }
 
-.accueil { display: flex; flex-direction: column; gap: 14px; }
-.intro { margin: 0; color: var(--doux); }
-.large { width: 100%; }
-.lien { margin: 10px 0 0; text-align: center; font-size: 14px; color: var(--doux); overflow-wrap: anywhere; }
-.option { display: flex; gap: 12px; align-items: flex-start; font-size: 14px; color: var(--doux); }
-.option strong { color: var(--texte); font-size: 16px; }
-.option input { width: 22px; height: 22px; margin: 2px 0 0; accent-color: var(--accent); flex: none; }
-.erreur { margin: 0; color: var(--danger); font-weight: 600; }
-
 .direct { display: flex; flex-direction: column; gap: 10px; padding-top: 8px; }
 .niveau { height: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
 .niveau-barre {

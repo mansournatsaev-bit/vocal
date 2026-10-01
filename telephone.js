@@ -1,13 +1,10 @@
-// Page téléphone : appel en direct avec l'ordinateur + enregistrement continu.
-// Chaque appui sur le gros bouton coupe l'enregistrement et envoie le morceau depuis l'appui précédent.
+// Page téléphone : l'appel avec l'ordinateur démarre dès l'ouverture du lien, et le micro
+// est enregistré en continu. Chaque appui sur le gros bouton envoie le morceau depuis l'appui précédent.
 
 const $ = sel => document.querySelector(sel);
 const el = {
   etat: $('#etat'), etatTexte: $('#etat-texte'), chrono: $('#chrono'), raccrocher: $('#raccrocher'),
-  accueil: $('#accueil'), lien: $('#lien'), partager: $('#partager'),
-  brut: $('#son-brut'), erreur: $('#erreur'),
-  direct: $('#direct'), niveau: $('#niveau'), alerte: $('#alerte'),
-  journal: $('#journal'), liste: $('#liste'),
+  niveau: $('#niveau'), alerte: $('#alerte'), journal: $('#journal'), liste: $('#liste'),
   bouton: $('#gros-bouton'), boutonTitre: $('#bouton-titre'), boutonSous: $('#bouton-sous'),
   son: $('#son-distant'),
 };
@@ -18,19 +15,24 @@ const donnees = new Map();   // id → WAV (ArrayBuffer) des vocaux enregistrés
 const accuses = new Map();   // id → fonction appelée quand l'ordinateur confirme la réception
 const lignes = new Map();    // id → <li> du journal
 
-let micro = null, ctx = null, enAppel = false, microCoupe = false;
-let morceaux = [], frames = 0, crete = 0, debutSegment = 0, debutAppel = 0;
+let micro = null, ctx = null, lecteurMicro = null, tauxEch = 48000;
+let enAppel = false, demarrage = false, microCoupe = false, erreurMicro = '';
+let morceaux = [], frames = 0, crete = 0, dernierPCM = 0, debutSegment = 0, debutAppel = 0;
 let peer = null, conn = null, appel = null, tentative = null;
-let appelOk = false, appelDepuis = 0, dernierSigne = 0, idPrisLe = 0;
+let appelOk = false, appelDepuis = 0, dernierSigne = 0, connDepuis = 0, idPrisLe = 0;
 let envoiEnCours = false, gardien = null, horloge = null, veille = null;
 
-el.brut.checked = memo.lire('vocal-brut') !== '0';
-el.lien.textContent = LIEN_ORDI.replace(/^https?:\/\//, '');
 chargerAttente();
+demarrer();
 
 el.bouton.addEventListener('click', () => (enAppel ? envoyer() : demarrer()));
 el.raccrocher.addEventListener('click', raccrocher);
-el.partager.addEventListener('click', partagerLien);
+
+// Les navigateurs coupent le son tant qu'on n'a pas touché la page : le premier toucher le débloque.
+document.addEventListener('pointerdown', () => {
+  ctx?.resume();
+  if (el.son.srcObject && el.son.paused) el.son.play().catch(() => {});
+});
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible' || !enAppel) return;
@@ -39,24 +41,8 @@ document.addEventListener('visibilitychange', () => {
 });
 
 addEventListener('beforeunload', e => {
-  if (enAppel || attente.length) { e.preventDefault(); e.returnValue = ''; }
+  if ((enAppel && frames > tauxEch * 2) || attente.length) { e.preventDefault(); e.returnValue = ''; }
 });
-
-// ---------- Lien de l'ordinateur ----------
-
-async function partagerLien() {
-  if (navigator.share) {
-    try { return await navigator.share({ title: 'Écoute mon appel', url: LIEN_ORDI }); }
-    catch (e) { if (e.name === 'AbortError') return; }
-  }
-  try {
-    await navigator.clipboard.writeText(LIEN_ORDI);
-    el.partager.textContent = 'Lien copié ✓';
-    setTimeout(() => { el.partager.textContent = "Envoyer le lien à l'ordinateur"; }, 1500);
-  } catch {
-    prompt('Copie ce lien :', LIEN_ORDI);
-  }
-}
 
 async function chargerAttente() {
   const restants = (await base.tout()).sort((a, b) => a.debut - b.debut);
@@ -71,53 +57,103 @@ async function chargerAttente() {
 // ---------- Micro et enregistrement ----------
 
 async function demarrer() {
-  el.erreur.hidden = true;
-  if (!window.Peer) return signaler("PeerJS n'a pas pu se charger. Vérifie la connexion internet puis recharge la page.");
-  if (!navigator.mediaDevices || !window.AudioWorkletNode) return signaler('Ouvre cette page en https (ou sur localhost) dans Chrome.');
-
+  if (enAppel || demarrage) return;
+  demarrage = true;
+  erreurMicro = '';
   el.bouton.disabled = true;
-  const brut = el.brut.checked;
-  memo.ecrire('vocal-brut', brut ? '1' : '0');
+  el.boutonTitre.textContent = 'Envoyer';
+  el.boutonSous.textContent = 'Autorise le micro pour commencer';
+  majEtat();
   try {
+    if (!window.Peer) throw new Error('vérifie la connexion internet puis recharge la page');
     micro = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: !brut, noiseSuppression: !brut, autoGainControl: !brut, channelCount: 1 },
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 },
     });
-    ctx = new AudioContext();
-    await ctx.audioWorklet.addModule('capture-worklet.js');
-    const capteur = new AudioWorkletNode(ctx, 'capture');
-    capteur.port.onmessage = e => recevoirPCM(e.data);
-    ctx.createMediaStreamSource(micro).connect(capteur).connect(ctx.destination);
-    await ctx.resume();
+    await brancherCapture(micro.getAudioTracks()[0]);
   } catch (e) {
     arreterMicro();
+    demarrage = false;
+    erreurMicro = e.name === 'NotAllowedError' ? 'Micro refusé' : 'Micro indisponible';
     el.bouton.disabled = false;
-    return signaler(e.name === 'NotAllowedError'
-      ? 'Accès au micro refusé. Autorise-le dans les réglages du site (icône à gauche de l\'adresse).'
-      : 'Impossible de démarrer le micro : ' + e.message);
+    el.boutonTitre.textContent = 'Réessayer';
+    el.boutonSous.textContent = e.name === 'NotAllowedError'
+      ? 'Autorise le micro (icône à gauche de l\'adresse), puis touche ici'
+      : e.message;
+    return majEtat();
   }
 
   micro.getAudioTracks()[0].addEventListener('ended', () => { microCoupe = true; });
+  demarrage = false;
   enAppel = true;
   microCoupe = false;
   morceaux = [];
   frames = 0;
-  debutSegment = debutAppel = Date.now();
+  dernierPCM = debutSegment = debutAppel = Date.now();
 
-  el.accueil.hidden = true;
-  el.direct.hidden = false;
   el.raccrocher.hidden = false;
   el.bouton.disabled = false;
-  el.boutonTitre.textContent = 'Envoyer';
   garderEcranAllume();
+  clearInterval(horloge);
   horloge = setInterval(rafraichir, 100);
   demarrerReseau();
   rafraichir();
+}
+
+// Capture brute du micro. Chrome lit la piste directement, sans attendre de toucher l'écran ;
+// sinon on passe par un AudioWorklet, que le navigateur peut laisser en pause jusqu'au premier toucher.
+async function brancherCapture(piste) {
+  if (window.MediaStreamTrackProcessor) {
+    lecteurMicro = new MediaStreamTrackProcessor({ track: piste, maxBufferSize: 500 }).readable.getReader();
+    lireMicro(lecteurMicro);
+    return;
+  }
+  ctx = new AudioContext();
+  tauxEch = ctx.sampleRate;
+  await ctx.audioWorklet.addModule('capture-worklet.js');
+  const capteur = new AudioWorkletNode(ctx, 'capture');
+  capteur.port.onmessage = e => recevoirPCM(e.data);
+  ctx.createMediaStreamSource(micro).connect(capteur).connect(ctx.destination);
+  ctx.resume();  // sans await : sans toucher d'écran, la promesse peut attendre longtemps
+}
+
+async function lireMicro(lecteur) {
+  for (;;) {
+    let r;
+    try { r = await lecteur.read(); } catch { return; }
+    if (r.done) return;
+    const trame = r.value;
+    tauxEch = trame.sampleRate;
+    recevoirPCM(versInt16(trame));
+    trame.close();
+  }
+}
+
+// Premier canal d'une trame audio, en PCM 16 bits.
+function versInt16(trame) {
+  const n = trame.numberOfFrames, canaux = trame.numberOfChannels;
+  const f32 = new Float32Array(n);
+  if (trame.format === 'f32-planar') {
+    trame.copyTo(f32, { planeIndex: 0 });
+  } else if (trame.format === 'f32') {
+    const entrelace = new Float32Array(n * canaux);
+    trame.copyTo(entrelace, { planeIndex: 0 });
+    for (let i = 0; i < n; i++) f32[i] = entrelace[i * canaux];
+  } else {
+    trame.copyTo(f32, { planeIndex: 0, format: 'f32-planar' });
+  }
+  const pcm = new Int16Array(n);
+  for (let i = 0; i < n; i++) {
+    const s = Math.max(-1, Math.min(1, f32[i]));
+    pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+  return pcm;
 }
 
 function recevoirPCM(pcm) {
   if (!enAppel) return;
   morceaux.push(pcm);
   frames += pcm.length;
+  dernierPCM = Date.now();
   for (let i = 0; i < pcm.length; i += 8) {
     const v = Math.abs(pcm[i]);
     if (v > crete) crete = v;
@@ -126,22 +162,23 @@ function recevoirPCM(pcm) {
 
 function rafraichir() {
   if (!enAppel) return;
-  el.boutonSous.textContent = `${duree(frames / ctx.sampleRate)} à envoyer`;
+  el.boutonSous.textContent = `${duree(frames / tauxEch)} à envoyer`;
   el.chrono.textContent = duree((Date.now() - debutAppel) / 1000);
   const db = crete > 0 ? 20 * Math.log10(crete / 32768) : -100;
   el.niveau.style.transform = `scaleX(${Math.max(0, Math.min(1, (db + 60) / 60))})`;
   crete = 0;
-  const enPause = microCoupe || ctx.state !== 'running';
-  el.alerte.hidden = !enPause;
-  if (enPause) {
-    el.alerte.textContent = microCoupe
-      ? 'Le micro a été coupé par le téléphone. Raccroche puis redémarre l\'appel.'
-      : 'Micro en pause : garde l\'écran allumé et l\'appli au premier plan.';
-  }
+
+  let alerte = '';
+  if (microCoupe) alerte = 'Le micro a été coupé par le téléphone. Raccroche puis touche « Rappeler ».';
+  else if (ctx && ctx.state !== 'running') alerte = 'Touche l\'écran pour lancer l\'enregistrement.';
+  else if (Date.now() - dernierPCM > 1500) alerte = 'Micro en pause : garde l\'appli au premier plan.';
+  else if (el.son.srcObject && el.son.paused) alerte = 'Touche l\'écran pour entendre l\'ordinateur.';
+  el.alerte.hidden = !alerte;
+  el.alerte.textContent = alerte;
 }
 
 async function envoyer() {
-  const sr = ctx.sampleRate;
+  const sr = tauxEch;
   if (frames < sr * 0.5) return flash('Trop court', 'refus');
 
   const pcm = morceaux, n = frames, debut = debutSegment;
@@ -180,7 +217,7 @@ function encoderWav(pcm, n, sr) {
 
 async function raccrocher() {
   if (!enAppel) return;
-  const reste = frames / ctx.sampleRate;
+  const reste = frames / tauxEch;
   if (reste >= 0.5 && confirm(`Envoyer les ${duree(reste)} pas encore envoyées ?`)) await envoyer();
 
   enAppel = false;
@@ -191,16 +228,18 @@ async function raccrocher() {
   veille?.release().catch(() => {});
   veille = null;
 
-  el.accueil.hidden = false;
-  el.direct.hidden = true;
   el.raccrocher.hidden = true;
+  el.alerte.hidden = true;
   el.chrono.textContent = '';
-  el.boutonTitre.textContent = "Démarrer l'appel";
-  el.boutonSous.textContent = "Le micro s'active, l'enregistrement commence";
+  el.niveau.style.transform = 'scaleX(0)';
+  el.boutonTitre.textContent = 'Rappeler';
+  el.boutonSous.textContent = 'Touche pour reprendre l\'appel';
   verifierFin();
 }
 
 function arreterMicro() {
+  lecteurMicro?.cancel().catch(() => {});
+  lecteurMicro = null;
   micro?.getTracks().forEach(t => t.stop());
   micro = null;
   ctx?.close().catch(() => {});
@@ -243,7 +282,12 @@ function liaisonOuverte() {
 
 // Toutes les 3 s : reconnexion au serveur, appel de l'ordinateur, battement de cœur, reprise des envois.
 function surveiller() {
-  if (!peer || peer.destroyed) return;
+  // PeerJS détruit la connexion si la place est encore prise à l'ouverture (rechargement rapide) :
+  // on en recrée une tant qu'on a un appel ou des vocaux à envoyer.
+  if (!peer || peer.destroyed) {
+    if (enAppel || attente.length) demarrerReseau();
+    return;
+  }
   if (peer.disconnected) {
     try { peer.reconnect(); } catch {}
   } else if (peer.open) {
@@ -285,10 +329,11 @@ function essayerConnexion() {
 }
 
 // L'ordinateur essaie aussi de nous joindre quand il arrive : c'est le téléphone qui choisit
-// la liaison gardée, pour qu'il n'en reste qu'une même si les deux côtés appellent en même temps.
+// la liaison gardée. Si notre liaison vient de s'ouvrir, les deux côtés se sont appelés en même
+// temps et on garde la nôtre ; sinon c'est une nouvelle page d'ordinateur qui remplace l'ancienne.
 function accepter(c) {
   c.on('open', () => {
-    if (liaisonOuverte()) return c.close();
+    if (liaisonOuverte() && Date.now() - connDepuis < 5000) return c.close();
     tentative?.close();
     tentative = null;
     brancher(c);
@@ -300,7 +345,7 @@ function accepter(c) {
 function brancher(c) {
   if (conn && conn !== c) conn.close();
   conn = c;
-  dernierSigne = Date.now();
+  dernierSigne = connDepuis = Date.now();
   c.on('data', d => {
     if (conn !== c) return;
     dernierSigne = Date.now();
@@ -422,18 +467,20 @@ function verifierFin() {
 
 function majEtat() {
   let texte, ton;
-  if (!enAppel) {
+  if (erreurMicro) {
+    [texte, ton] = [erreurMicro, 'erreur'];
+  } else if (!enAppel) {
     if (attente.length && peer) {
       [texte, ton] = liaisonOuverte()
         ? ['Envoi des vocaux restants…', 'attente']
         : ["En attente de l'ordinateur pour envoyer les vocaux…", 'attente'];
     } else {
-      [texte, ton] = ['Prêt', 'neutre'];
+      [texte, ton] = debutAppel ? ['Appel terminé', 'neutre'] : ['Démarrage…', 'attente'];
     }
   } else if (!peer?.open) {
     [texte, ton] = Date.now() - idPrisLe < 10000
-      ? ['Code déjà ouvert sur un autre appareil ? Nouvel essai…', 'erreur']
-      : ['Connexion au serveur…', 'attente'];
+      ? ['Déjà ouvert sur un autre téléphone ? Nouvel essai…', 'erreur']
+      : ['Connexion…', 'attente'];
   } else if (!liaisonOuverte()) {
     [texte, ton] = ["En attente de l'ordinateur…", 'attente'];
   } else if (!appelOk) {
@@ -468,11 +515,6 @@ function flash(titre, classe) {
   clearTimeout(flash.minuteur);
   flash.minuteur = setTimeout(() => {
     el.bouton.classList.remove(classe);
-    el.boutonTitre.textContent = enAppel ? 'Envoyer' : "Démarrer l'appel";
+    el.boutonTitre.textContent = enAppel ? 'Envoyer' : 'Rappeler';
   }, 700);
-}
-
-function signaler(message) {
-  el.erreur.textContent = message;
-  el.erreur.hidden = false;
 }

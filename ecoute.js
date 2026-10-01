@@ -45,6 +45,16 @@ async function demarrer() {
     .catch(() => { micro = null; })
     .finally(() => { el.noteMicro.hidden = !!micro; });
 
+  creerPeer();
+  setInterval(surveiller, 3000);
+  setInterval(majChrono, 1000);
+  majEtat();
+}
+
+// ---------- Réseau ----------
+
+function creerPeer() {
+  tentative = null;
   peer = new Peer(ID_ORDI, optionsPeer());
   peer.on('open', surveiller);
   peer.on('disconnected', majEtat);
@@ -62,12 +72,7 @@ async function demarrer() {
   });
   peer.on('connection', accueillir);
   peer.on('call', repondre);
-  setInterval(surveiller, 3000);
-  setInterval(majChrono, 1000);
-  majEtat();
 }
-
-// ---------- Réseau ----------
 
 // Le téléphone choisit la liaison qu'il garde : ici on écoute toutes celles qui sont ouvertes.
 function accueillir(c) {
@@ -137,7 +142,9 @@ function pisteMuette() {
 }
 
 function surveiller() {
-  if (!peer || peer.destroyed) return;
+  // PeerJS détruit la connexion si la place est encore prise à l'ouverture (ancien onglet,
+  // rechargement rapide) : on en recrée une jusqu'à ce que la place se libère.
+  if (!peer || peer.destroyed) return creerPeer();
   if (peer.disconnected) {
     try { peer.reconnect(); } catch {}
   } else if (peer.open) {

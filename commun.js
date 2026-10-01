@@ -8,7 +8,7 @@ const ICE_SERVERS = null;
 
 const ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 const TAILLE_MORCEAU = 16 * 1024;  // taille des paquets envoyés sur le canal de données
-const DELAI_SILENCE = 20000;       // ms sans nouvelles de l'autre côté avant de couper la liaison
+const DELAI_SILENCE = 12000;       // ms sans nouvelles de l'autre côté avant de couper la liaison
 
 // Un seul salon par site, déduit de son adresse : le lien suffit, sans code.
 // Ex. mansournatsaev-bit.github.io/vocal/ → « mansournatsaev-bit-github-io-vocal ».
@@ -16,7 +16,6 @@ const SALON = (location.host + location.pathname.replace(/[^/]*$/, ''))
   .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 const ID_TELEPHONE = 'vocalbtn-v1-' + SALON + '-tel';
 const ID_ORDI = 'vocalbtn-v1-' + SALON + '-pc';
-const LIEN_ORDI = new URL('./', location.href).href;
 
 function optionsPeer() {
   return ICE_SERVERS ? { config: { iceServers: ICE_SERVERS } } : {};
