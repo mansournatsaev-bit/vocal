@@ -154,7 +154,7 @@ async function repondre(a) {
 
 let muette = null;
 function pisteMuette() {
-  muette ??= new AudioContext().createMediaStreamDestination().stream;
+  if (!muette) muette = new AudioContext().createMediaStreamDestination().stream;
   return muette;
 }
 

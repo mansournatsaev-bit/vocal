@@ -6,9 +6,13 @@ const el = {
   etat: $('#etat'), etatTexte: $('#etat-texte'), chrono: $('#chrono'), raccrocher: $('#raccrocher'),
   niveau: $('#niveau'), niveauOrdi: $('#niveau-ordi'), alerte: $('#alerte'),
   journal: $('#journal'), liste: $('#liste'), voile: $('#voile'), telecommande: $('#telecommande'),
+  ecranNoir: $('#ecran-noir'),
   bouton: $('#gros-bouton'), boutonTitre: $('#bouton-titre'), boutonSous: $('#bouton-sous'),
   son: $('#son-distant'),
 };
+
+// Présent quand la page tourne dans l'appli Android : elle gère les boutons de volume et l'écran noir.
+const natif = window.VocalNatif || null;
 
 const base = new Base('vocal-telephone');
 const attente = [];          // vocaux pas encore confirmés par l'ordinateur, du plus ancien au plus récent
@@ -30,12 +34,15 @@ demarrer();
 
 el.bouton.addEventListener('click', () => (enAppel ? envoyer() : demarrer()));
 el.raccrocher.addEventListener('click', raccrocher);
+el.ecranNoir.addEventListener('click', () => natif?.ecranNoir());
+// Appelée par l'appli Android quand on appuie sur un bouton de volume.
+window.vocalEnvoyer = envoyerDepuisBouton;
 
 // Les navigateurs coupent le son tant qu'on n'a pas touché la page : le premier toucher le débloque.
 document.addEventListener('pointerdown', () => {
   ctx?.resume();
   if (el.son.srcObject && el.son.paused) el.son.play().then(rafraichir).catch(() => {});
-  sonsCtx ??= new AudioContext();
+  if (!sonsCtx) sonsCtx = new AudioContext();
   sonsCtx.resume();
   if (enAppel) activerTelecommande();
 });
@@ -101,6 +108,11 @@ async function demarrer() {
   el.bouton.disabled = false;
   garderEcranAllume();
   activerTelecommande();
+  if (natif) {
+    el.telecommande.textContent = '🔊 Les boutons de volume envoient le vocal (bip-bip = envoyé).';
+    el.telecommande.hidden = false;
+    el.ecranNoir.hidden = false;
+  }
   clearInterval(horloge);
   horloge = setInterval(rafraichir, 100);
   demarrerReseau();
@@ -253,6 +265,8 @@ async function raccrocher() {
   el.raccrocher.hidden = true;
   el.alerte.hidden = true;
   el.voile.hidden = true;
+  el.telecommande.hidden = true;
+  el.ecranNoir.hidden = true;
   el.chrono.textContent = '';
   el.niveau.style.transform = el.niveauOrdi.style.transform = 'scaleX(0)';
   el.boutonTitre.textContent = 'Rappeler';
@@ -278,7 +292,7 @@ async function garderEcranAllume() {
 // Chrome ne transmet ces boutons qu'à une page qui joue un média : on joue donc un silence en boucle.
 
 function activerTelecommande() {
-  if (!('mediaSession' in navigator) || silence) return;
+  if (natif || !('mediaSession' in navigator) || silence) return;
   const blanc = encoderWav([new Int16Array(8000 * 10)], 8000 * 10, 8000);
   silence = new Audio(URL.createObjectURL(new Blob([blanc], { type: 'audio/wav' })));
   silence.loop = true;
@@ -321,6 +335,11 @@ function appuiDistant() {
   // Le silence doit continuer à jouer, sinon Chrome ne nous transmet plus le bouton.
   if (silence?.paused) silence.play().catch(() => {});
   navigator.mediaSession.playbackState = 'playing';
+  envoyerDepuisBouton();
+}
+
+// Bouton physique (volume dans l'appli, ou écouteurs) : même effet que le gros bouton, avec un bip.
+function envoyerDepuisBouton() {
   if (!enAppel || Date.now() - dernierAppuiDistant < 800) return;
   dernierAppuiDistant = Date.now();
   const assezLong = frames >= tauxEch * 0.5;
@@ -331,7 +350,7 @@ function appuiDistant() {
 // Petit signal dans les écouteurs : deux notes aiguës = envoyé, une note grave = trop court.
 function bip(ok) {
   try {
-    sonsCtx ??= new AudioContext();
+    if (!sonsCtx) sonsCtx = new AudioContext();
     sonsCtx.resume();
     const t = sonsCtx.currentTime;
     (ok ? [880, 1320] : [330]).forEach((frequence, i) => {
@@ -358,7 +377,7 @@ function demarrerReseau() {
     peer.on('error', erreurPeer);
     peer.on('connection', accepter);
   }
-  gardien ??= setInterval(surveiller, 3000);
+  if (!gardien) gardien = setInterval(surveiller, 3000);
 }
 
 function erreurPeer(err) {

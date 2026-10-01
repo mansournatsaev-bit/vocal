@@ -161,6 +161,7 @@ h2 { font-size: 15px; }
 .liste .num { font-weight: 700; min-width: 36px; }
 .liste .info { flex: 1; color: var(--doux); }
 .liste .info.coupe { color: var(--attention); }
+#ecran-noir { white-space: normal; text-align: center; }
 .liste .statut { font-size: 14px; font-weight: 600; color: var(--doux); }
 .liste li[data-ton="ok"] .statut { color: var(--ok); }
 .liste li[data-ton="envoi"] .statut { color: var(--attention); }
