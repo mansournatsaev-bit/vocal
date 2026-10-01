@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vocaux reçus</title>
+  <link rel="icon" href="icone.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="pc">
+    <header class="pc-haut">
+      <div>
+        <h1>Vocaux reçus</h1>
+        <p class="petit" id="salon-info">Appel avec le téléphone</p>
+      </div>
+      <div class="pc-controles" id="controles" hidden>
+        <div class="etat" id="etat" data-ton="attente">
+          <span class="pastille"></span><span id="etat-texte">Connexion…</span>
+          <span class="chrono" id="chrono"></span>
+        </div>
+        <button class="bouton-secondaire" id="bouton-micro">Couper mon micro</button>
+      </div>
+    </header>
+
+    <section class="carte rejoindre" id="accueil">
+      <form id="form-code">
+        <label for="champ-code">Code du salon (affiché sur le téléphone)</label>
+        <div class="rangee">
+          <input id="champ-code" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="ex. k7m2pq">
+          <button class="bouton-principal" type="submit">Rejoindre l'appel</button>
+        </div>
+        <p class="petit">Le navigateur va demander le micro pour que tu puisses répondre. Tu peux refuser et seulement écouter.</p>
+      </form>
+    </section>
+
+    <section id="salon" hidden>
+      <button class="bouton-principal" id="activer-son" hidden>Activer le son de l'appel</button>
+      <div class="carte reception" id="reception" hidden>
+        <span id="reception-texte"></span>
+        <div class="progression"><div id="reception-barre"></div></div>
+      </div>
+      <div class="liste-tete">
+        <h2 id="resume">Aucun vocal pour l'instant</h2>
+        <button class="lien-discret" id="tout-effacer" hidden>Tout effacer</button>
+      </div>
+      <ol class="vocaux" id="vocaux"></ol>
+      <p class="vide" id="vide">Les vocaux envoyés depuis le téléphone s'ajoutent ici, le plus récent en haut.</p>
+    </section>
+  </div>
+
+  <audio id="son-distant" autoplay></audio>
+
+  <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+  <script src="commun.js"></script>
+  <script src="ecoute.js"></script>
+</body>
+</html>
