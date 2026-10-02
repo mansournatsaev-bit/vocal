@@ -33,7 +33,7 @@ chargerAttente();
 demarrer();
 
 el.bouton.addEventListener('click', () => (enAppel ? envoyer() : demarrer()));
-el.raccrocher.addEventListener('click', raccrocher);
+el.raccrocher.addEventListener('click', () => raccrocher());
 el.ecranNoir.addEventListener('click', () => natif?.ecranNoir());
 // Appelée par l'appli Android quand on appuie sur un bouton de volume.
 window.vocalEnvoyer = envoyerDepuisBouton;
@@ -248,10 +248,11 @@ function encoderWav(pcm, n, sr) {
   return buf;
 }
 
-async function raccrocher() {
+// sansQuestion : depuis les boutons physiques (écran souvent éteint), le reste est envoyé sans demander.
+async function raccrocher({ sansQuestion = false } = {}) {
   if (!enAppel) return;
   const reste = frames / tauxEch;
-  if (reste >= 0.5 && confirm(`Envoyer les ${duree(reste)} pas encore envoyées ?`)) await envoyer();
+  if (reste >= 0.5 && (sansQuestion || confirm(`Envoyer les ${duree(reste)} pas encore envoyées ?`))) await envoyer();
 
   enAppel = false;
   envoyerMsg(conn, { t: 'raccroche' });
@@ -338,36 +339,62 @@ function appuiDistant() {
   envoyerDepuisBouton();
 }
 
-// Bouton physique (volume dans l'appli, ou écouteurs) : même effet que le gros bouton, avec un bip.
+// Bouton physique (volume dans l'appli, ou écouteurs) :
+// - un appui envoie le vocal, comme le gros bouton ;
+// - deux appuis rapides raccrochent, ou rappellent si l'appel est coupé.
+// Le premier des deux appuis a déjà envoyé le vocal, donc rien n'est perdu en raccrochant.
 // Renvoie ce qui s'est passé, que l'appli Android note dans son journal.
+const DOUBLE_APPUI = 500;  // ms maximum entre les deux appuis
+
 function envoyerDepuisBouton() {
-  if (!enAppel) return 'pas en appel';
-  if (Date.now() - dernierAppuiDistant < 800) return 'ignoré (deuxième appui trop rapproché)';
-  dernierAppuiDistant = Date.now();
+  const maintenant = Date.now();
+  const double = maintenant - dernierAppuiDistant < DOUBLE_APPUI;
+  dernierAppuiDistant = double ? 0 : maintenant;  // un troisième appui repart de zéro
+
+  if (double) {
+    if (enAppel) {
+      raccrocher({ sansQuestion: true });
+      jouerNotes(SON_RACCROCHE);
+      return 'raccroché';
+    }
+    demarrer();
+    jouerNotes(SON_RAPPEL);
+    return 'rappel';
+  }
+
+  if (!enAppel) {
+    jouerNotes(SON_RIEN);
+    return 'pas en appel (deux appuis rapides pour rappeler)';
+  }
   const secondes = frames / tauxEch;
   const assezLong = secondes >= 0.5;
   envoyer();
-  bip(assezLong);
+  jouerNotes(assezLong ? SON_ENVOYE : SON_RIEN);
   return `${assezLong ? 'envoyé' : 'trop court'} : ${secondes.toFixed(1)} s, page ${document.visibilityState}, ` +
     `liaison ${liaisonOuverte() ? 'ouverte' : 'fermée'}`;
 }
 
-// Petit signal dans les écouteurs : deux notes aiguës = envoyé, une note grave = trop court.
-function bip(ok) {
+// Signaux dans les écouteurs, pour savoir ce qui s'est passé sans regarder l'écran.
+const SON_ENVOYE = { notes: [880, 1320], ecart: 0.12 };        // deux notes aiguës
+const SON_RIEN = { notes: [330], ecart: 0.12 };                // une note grave : rien envoyé
+const SON_RACCROCHE = { notes: [660, 440, 220], ecart: 0.18 }; // trois notes qui descendent
+const SON_RAPPEL = { notes: [440, 660, 880], ecart: 0.18 };    // trois notes qui montent
+
+function jouerNotes({ notes, ecart }) {
   try {
     if (!sonsCtx) sonsCtx = new AudioContext();
     sonsCtx.resume();
     const t = sonsCtx.currentTime;
-    (ok ? [880, 1320] : [330]).forEach((frequence, i) => {
+    notes.forEach((frequence, i) => {
       const o = sonsCtx.createOscillator(), g = sonsCtx.createGain();
-      const debut = t + i * 0.12;
+      const debut = t + i * ecart, duree = ecart - 0.02;
       o.frequency.value = frequence;
       g.gain.setValueAtTime(0.0001, debut);
       g.gain.exponentialRampToValueAtTime(0.12, debut + 0.01);
-      g.gain.exponentialRampToValueAtTime(0.0001, debut + 0.1);
+      g.gain.exponentialRampToValueAtTime(0.0001, debut + duree);
       o.connect(g).connect(sonsCtx.destination);
       o.start(debut);
-      o.stop(debut + 0.11);
+      o.stop(debut + duree + 0.01);
     });
   } catch {}
 }
