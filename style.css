@@ -138,6 +138,12 @@ h2 { font-size: 15px; }
   transform-origin: left;
   transition: transform .1s linear;
 }
+/* Volume de l'ordinateur dans le téléphone (les boutons de volume envoient le vocal). */
+.volume { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; font-size: 15px; font-weight: 600; }
+.volume-tete { display: flex; justify-content: space-between; }
+#volume-valeur { font-variant-numeric: tabular-nums; color: var(--doux); }
+.volume input { width: 100%; height: 40px; margin: 0; accent-color: var(--ok); }
+
 .alerte {
   margin: 0;
   padding: 10px 12px;

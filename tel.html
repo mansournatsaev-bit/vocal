@@ -7,7 +7,7 @@
   <title>Vocal</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icone.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=17">
+  <link rel="stylesheet" href="style.css?v=18">
 </head>
 <body>
   <div class="tel">
@@ -27,6 +27,10 @@
           <span>Ordinateur</span>
           <div class="niveau"><div class="niveau-barre" id="niveau-ordi"></div></div>
         </div>
+        <label class="volume">
+          <span class="volume-tete"><span>🔊 Son de l'ordinateur</span><span id="volume-valeur">100 %</span></span>
+          <input type="range" id="volume" min="0" max="100" step="5" value="100">
+        </label>
         <p class="alerte" id="alerte" hidden></p>
         <p class="petit" id="telecommande" hidden>🎧 Le bouton pause/lecture des écouteurs envoie aussi le vocal, même écran éteint (bip-bip = envoyé).</p>
         <button class="bouton-secondaire" id="ecran-noir" hidden>Écran noir (l'appel continue, double-touche pour revenir)</button>
@@ -48,7 +52,7 @@
   <audio id="son-distant" autoplay playsinline></audio>
 
   <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
-  <script src="commun.js?v=17"></script>
-  <script src="telephone.js?v=17"></script>
+  <script src="commun.js?v=18"></script>
+  <script src="telephone.js?v=18"></script>
 </body>
 </html>
