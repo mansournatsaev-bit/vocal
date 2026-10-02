@@ -79,11 +79,26 @@ async function demarrer() {
   majEtat();
   try {
     if (!window.Peer) throw new Error('vérifie la connexion internet puis recharge la page');
-    micro = await navigator.mediaDevices.getUserMedia({
+    console.info(`Démarrage : demande du micro (page ${document.visibilityState})`);
+    // Si le micro ne répond pas, on abandonne pour qu'un nouvel essai reste possible ;
+    // s'il répond trop tard, on le referme aussitôt.
+    let abandonne = false;
+    const demande = navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 },
     });
+    demande.then(flux => { if (abandonne) flux.getTracks().forEach(t => t.stop()); }, () => {});
+    micro = await Promise.race([
+      demande,
+      new Promise((_, refuser) => setTimeout(() => {
+        if (micro) return;
+        abandonne = true;
+        refuser(new Error('le micro ne répond pas'));
+      }, 8000)),
+    ]);
+    console.info('Démarrage : micro obtenu');
     await brancherCapture(micro.getAudioTracks()[0]);
   } catch (e) {
+    console.info(`Démarrage impossible : ${e.name} ${e.message}`);
     arreterMicro();
     demarrage = false;
     erreurMicro = e.name === 'NotAllowedError' ? 'Micro refusé' : 'Micro indisponible';
