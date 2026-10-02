@@ -6,7 +6,7 @@ const el = {
   etat: $('#etat'), etatTexte: $('#etat-texte'), chrono: $('#chrono'), raccrocher: $('#raccrocher'),
   niveau: $('#niveau'), niveauOrdi: $('#niveau-ordi'), alerte: $('#alerte'),
   journal: $('#journal'), liste: $('#liste'), voile: $('#voile'), telecommande: $('#telecommande'),
-  ecranNoir: $('#ecran-noir'), volume: $('#volume'), volumeValeur: $('#volume-valeur'),
+  ecranNoir: $('#ecran-noir'),
   bouton: $('#gros-bouton'), boutonTitre: $('#bouton-titre'), boutonSous: $('#bouton-sous'),
   son: $('#son-distant'),
 };
@@ -30,15 +30,11 @@ let envoiEnCours = false, gardien = null, horloge = null, veille = null;
 let silence = null, sonsCtx = null, dernierAppuiDistant = 0;  // bouton des écouteurs
 
 chargerAttente();
-reglerVolume(Number(memo.lire('vocal-volume') ?? 100));
-console.info(`Volume : ${el.volume.value} %`);
 demarrer();
 
 el.bouton.addEventListener('click', () => (enAppel ? envoyer() : demarrer()));
 el.raccrocher.addEventListener('click', () => raccrocher());
 el.ecranNoir.addEventListener('click', () => natif?.ecranNoir());
-el.volume.addEventListener('input', () => reglerVolume(Number(el.volume.value)));
-el.volume.addEventListener('change', () => console.info(`Volume : ${el.volume.value} %`));
 // Appelée par l'appli Android quand on appuie sur un bouton de volume.
 window.vocalEnvoyer = envoyerDepuisBouton;
 
@@ -303,16 +299,6 @@ function arreterMicro() {
   micro = null;
   ctx?.close().catch(() => {});
   ctx = null;
-}
-
-// Les boutons de volume envoient le vocal : le volume de l'appel se règle avec le curseur.
-// Le niveau est gardé en mémoire (écran éteint, appli relancée).
-function reglerVolume(pourcent) {
-  const v = Math.max(0, Math.min(100, Number.isFinite(pourcent) ? pourcent : 100));
-  el.son.volume = v / 100;
-  el.volume.value = v;
-  el.volumeValeur.textContent = `${v} %`;
-  memo.ecrire('vocal-volume', v);
 }
 
 async function garderEcranAllume() {
