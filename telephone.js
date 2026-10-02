@@ -31,14 +31,14 @@ let silence = null, sonsCtx = null, dernierAppuiDistant = 0;  // bouton des éco
 
 chargerAttente();
 reglerVolume(Number(memo.lire('vocal-volume') ?? 100));
-console.info(`Son de l'ordinateur : ${el.volume.value} %`);
+console.info(`Volume : ${el.volume.value} %`);
 demarrer();
 
 el.bouton.addEventListener('click', () => (enAppel ? envoyer() : demarrer()));
 el.raccrocher.addEventListener('click', () => raccrocher());
 el.ecranNoir.addEventListener('click', () => natif?.ecranNoir());
 el.volume.addEventListener('input', () => reglerVolume(Number(el.volume.value)));
-el.volume.addEventListener('change', () => console.info(`Son de l'ordinateur : ${el.volume.value} %`));
+el.volume.addEventListener('change', () => console.info(`Volume : ${el.volume.value} %`));
 // Appelée par l'appli Android quand on appuie sur un bouton de volume.
 window.vocalEnvoyer = envoyerDepuisBouton;
 
@@ -305,7 +305,7 @@ function arreterMicro() {
   ctx = null;
 }
 
-// Les boutons de volume envoient le vocal : le son de l'ordinateur se règle avec le curseur.
+// Les boutons de volume envoient le vocal : le volume de l'appel se règle avec le curseur.
 // Le niveau est gardé en mémoire (écran éteint, appli relancée).
 function reglerVolume(pourcent) {
   const v = Math.max(0, Math.min(100, Number.isFinite(pourcent) ? pourcent : 100));

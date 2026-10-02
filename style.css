@@ -138,7 +138,7 @@ h2 { font-size: 15px; }
   transform-origin: left;
   transition: transform .1s linear;
 }
-/* Volume de l'ordinateur dans le téléphone (les boutons de volume envoient le vocal). */
+/* Volume de l'appel sur le téléphone (les boutons de volume envoient le vocal). */
 .volume { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; font-size: 15px; font-weight: 600; }
 .volume-tete { display: flex; justify-content: space-between; }
 #volume-valeur { font-variant-numeric: tabular-nums; color: var(--doux); }
