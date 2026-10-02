@@ -14,11 +14,13 @@ const el = {
 const base = new Base('vocal-ecoute');
 const affiches = new Map();  // id → { vocal, li, url }
 const liaisons = new Map();  // liaison ouverte avec le téléphone → dernier signe de vie (ms)
+const glissables = new Map();  // id → copie du vocal prête à glisser dans un autre onglet (voir preparerGlisser)
+const enPreparation = new Set();
 const lecteur = new Audio();
 
 let peer = null, appel = null, micro = null, microPret = null, tentative = null;
 let debutAppel = 0, termine = false, idPrisLe = 0;
-let reception = null, dernier = null, enLecture = null, nonLus = 0, dessinPrevu = false;
+let reception = null, dernier = null, enLecture = null, nonLus = 0, dessinPrevu = false, dossierGlisser = null;
 let creteMicro = 0, creteTel = 0;
 
 el.toutEffacer.addEventListener('click', toutEffacer);
@@ -241,7 +243,7 @@ function afficherVocal(v, nouveau) {
   const li = document.createElement('li');
   li.className = 'fichier' + (nouveau ? ' nouveau' : '');
   li.innerHTML = `
-    <a class="fichier-lien" draggable="true" title="Clique pour télécharger, ou glisse le fichier où tu veux">
+    <a class="fichier-lien" draggable="true" title="Clique pour télécharger, ou glisse le fichier où tu veux (Gemini, bureau…)">
       ${ICONE_ONDE}
       <span class="fichier-texte"><span class="fichier-nom"></span><span class="fichier-meta"></span></span>
       <span class="fichier-action">Télécharger</span>
@@ -261,6 +263,7 @@ function afficherVocal(v, nouveau) {
     .sort((a, b) => a.vocal.debut - b.vocal.debut)[0];
   el.vocaux.insertBefore(li, suivant ? suivant.li : null);
   affiches.set(v.id, { vocal: v, li, url });
+  preparerGlisser(v);
 
   if (!dernier || v.debut >= dernier.debut) dernier = v;
   if (nouveau) {
@@ -275,14 +278,67 @@ function afficherVocal(v, nouveau) {
 
 // Glisser un vocal le dépose comme un vrai fichier : sur le bureau, dans un dossier ou dans une page web.
 function rendreGlissable(lien, obtenirVocal) {
+  // Filet de sécurité : si la copie temporaire manque encore, on la prépare dès le survol.
+  lien.addEventListener('pointerenter', () => {
+    const v = obtenirVocal();
+    if (v) preparerGlisser(v);
+  });
   lien.addEventListener('dragstart', e => {
     const v = obtenirVocal();
     const a = v && affiches.get(v.id);
     if (!a) return e.preventDefault();
-    try { e.dataTransfer.items.add(new File([v.blob], v.nom, { type: 'audio/wav' })); } catch {}
+    const fichier = glissables.get(v.id) || new File([v.blob], v.nom, { type: 'audio/wav' });
+    try { e.dataTransfer.items.add(fichier); } catch {}
     e.dataTransfer.setData('DownloadURL', `audio/wav:${v.nom}:${a.url}`);
     e.dataTransfer.effectAllowed = 'copy';
   });
+}
+
+// Chrome ne transmet pas à un autre onglet (Gemini, Gmail…) un fichier fabriqué par la page : la page
+// d'arrivée n'en reçoit que le nom. Il transmet en revanche les fichiers du système de fichiers
+// temporaire du navigateur : chaque vocal y est donc recopié, prêt à être glissé en pièce jointe.
+function dossierTemporaire() {
+  if (!dossierGlisser) {
+    dossierGlisser = new Promise(ok => {
+      if (!window.webkitRequestFileSystem) return ok(null);
+      webkitRequestFileSystem(window.TEMPORARY, 1024 ** 3, fs => ok(fs.root), () => ok(null));
+    });
+  }
+  return dossierGlisser;
+}
+
+async function preparerGlisser(v) {
+  if (glissables.has(v.id) || enPreparation.has(v.id)) return;
+  enPreparation.add(v.id);
+  try {
+    const dossier = await dossierTemporaire();
+    if (!dossier) return;
+    const entree = await new Promise((ok, ko) => dossier.getFile(v.nom, { create: true }, ok, ko));
+    let fichier = await new Promise((ok, ko) => entree.file(ok, ko));
+    if (fichier.size !== v.blob.size) {
+      const ecrivain = await new Promise((ok, ko) => entree.createWriter(ok, ko));
+      const ecrire = action => new Promise((ok, ko) => {
+        ecrivain.onwriteend = ok;
+        ecrivain.onerror = () => ko(ecrivain.error);
+        action();
+      });
+      await ecrire(() => ecrivain.truncate(0));
+      await ecrire(() => ecrivain.write(v.blob));
+      fichier = await new Promise((ok, ko) => entree.file(ok, ko));
+    }
+    if (affiches.has(v.id)) glissables.set(v.id, fichier);
+  } catch (e) {
+    console.warn('Copie pour le glisser impossible', e);
+  } finally {
+    enPreparation.delete(v.id);
+  }
+}
+
+async function oublierGlisser(v) {
+  glissables.delete(v.id);
+  const dossier = await dossierTemporaire();
+  if (!dossier) return;
+  dossier.getFile(v.nom, {}, entree => entree.remove(() => {}, () => {}), () => {});
 }
 
 function ecouter(id) {
@@ -312,6 +368,7 @@ async function toutEffacer() {
   for (const [id, a] of affiches) {
     URL.revokeObjectURL(a.url);
     a.li.remove();
+    oublierGlisser(a.vocal);
     await base.suppr(id).catch(() => {});
   }
   affiches.clear();
@@ -346,7 +403,7 @@ function majZone() {
     z.dataset.etat = 'recu';
     titre = 'Tu as reçu un vocal';
     sous = `Vocal ${dernier.numero} · ${duree(dernier.duree)} · ${heure(dernier.debut)}`;
-    indice = 'Clique pour le télécharger, ou glisse-le où tu veux';
+    indice = 'Clique pour le télécharger, ou glisse-le où tu veux (Gemini, bureau…)';
   } else {
     z.dataset.etat = 'vide';
     titre = 'Aucun vocal pour l\'instant';
