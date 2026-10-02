@@ -7,7 +7,8 @@ cliquer pour rejoindre.
 
 - **Téléphone** : l'appel démarre tout seul et le micro est enregistré en continu, en qualité
   maximale. Le gros bouton **Envoyer** (tiers bas de l'écran) envoie à l'ordinateur un fichier WAV
-  avec tout ce qui a été dit depuis l'appui précédent.
+  avec tout ce qui a été dit depuis l'appui précédent. Un vocal fait forcément moins de 5 minutes :
+  à 5 minutes sans envoi, tout est effacé (« Effacé (5 min) ») et le compteur repart de 0.
 - **Ordinateur** : on entend l'appel et on parle. Le tiers haut de l'écran annonce « Tu as reçu un
   vocal ». Les vocaux arrivent dans l'ordre : clic = télécharger, glisser = le déposer où on veut
   (bureau, dossier, page web). **Tout effacer** vide la liste.
