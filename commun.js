@@ -1,10 +1,19 @@
 // Outils partagés par la page téléphone (index.html) et la page écoute (ecoute.html).
 
-// null = serveurs par défaut de PeerJS (STUN Google + relais TURN de PeerJS).
-// Pour ton propre relais (Cloudflare, Metered…), mets une liste ici, par exemple :
-// [{ urls: 'stun:stun.l.google.com:19302' },
-//  { urls: 'turn:exemple.com:3478', username: '…', credential: '…' }]
-const ICE_SERVERS = null;
+// Comment le téléphone et l'ordinateur se trouvent à travers les box et la 4G.
+// - STUN : chemin direct, quand les deux réseaux le permettent (même box, la plupart des Wi-Fi).
+// - TURN : relais quand le direct est impossible (téléphone en 4G/5G, Wi-Fi d'entreprise…).
+//   Le relais gratuit de PeerJS n'existe plus : sans relais à soi, la 4G ne passe pas.
+//   Relais : ExpressTURN, offre gratuite (1000 Go/mois), identifiants sur expressturn.com.
+// Le direct est toujours essayé en premier : à la maison, rien ne passe par le relais.
+const ICE_SERVERS = [
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] },
+  {
+    urls: ['turn:free.expressturn.com:3478?transport=udp', 'turn:free.expressturn.com:3478?transport=tcp'],
+    username: '000000002106311982',
+    credential: 'GizA/MkbVoiidmRcDS64ke3e7RQ=',
+  },
+];
 
 const ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 const TAILLE_MORCEAU = 16 * 1024;  // taille des paquets envoyés sur le canal de données
@@ -18,7 +27,7 @@ const ID_TELEPHONE = 'vocalbtn-v1-' + SALON + '-tel';
 const ID_ORDI = 'vocalbtn-v1-' + SALON + '-pc';
 
 function optionsPeer() {
-  return ICE_SERVERS ? { config: { iceServers: ICE_SERVERS } } : {};
+  return { config: { iceServers: ICE_SERVERS } };
 }
 
 function envoyerMsg(liaison, message) {

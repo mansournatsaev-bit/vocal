@@ -26,7 +26,13 @@ Pour quitter, balayer l'appli dans les applis récentes : ça raccroche. La touc
 
 Pas de serveur à installer : l'appel et les fichiers passent directement d'un appareil à l'autre
 (WebRTC, via le service gratuit PeerJS pour la mise en relation). Il y a un seul appel par site :
-un téléphone et un ordinateur à la fois.
+un téléphone et un ordinateur à la fois. N'importe quel ordinateur peut servir : il suffit d'y
+ouvrir le lien (et de fermer la page sur l'ancien).
+
+Quand le téléphone est en 4G/5G, ou sur un autre réseau que l'ordinateur, le direct est souvent
+impossible : l'appel passe alors par un relais TURN (ExpressTURN, offre gratuite de 1000 Go/mois,
+identifiants dans `ICE_SERVERS` de `commun.js`). À la maison, sur la même box, rien ne passe par
+le relais.
 
 ## À savoir
 

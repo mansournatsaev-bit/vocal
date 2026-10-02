@@ -383,7 +383,7 @@ function majEtat() {
   let texte, ton;
   if (!peer?.open) {
     [texte, ton] = Date.now() - idPrisLe < 10000
-      ? ['Déjà ouvert dans un autre onglet ? Nouvel essai…', 'erreur']
+      ? ['Déjà ouvert sur un autre ordi ou onglet : ferme-le là-bas', 'erreur']
       : ['Connexion…', 'attente'];
   } else if (appel && debutAppel) {
     [texte, ton] = ['En appel', 'ok'];
