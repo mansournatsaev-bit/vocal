@@ -14,6 +14,12 @@ const el = {
 // Présent quand la page tourne dans l'appli Android : elle gère les boutons de volume et l'écran noir.
 const natif = window.VocalNatif || null;
 
+// Après 5 min écran éteint sans appel, le moteur web ne réveille plus la page qu'une fois par minute
+// (le rappel par le bouton volume attendait alors le micro jusqu'à une minute), sauf si la page
+// utilise WebRTC. Cette connexion vide, jamais reliée à rien, n'envoie rien sur le réseau mais garde
+// la page réactive.
+const veilleWebRTC = window.RTCPeerConnection ? new RTCPeerConnection() : null;
+
 const base = new Base('vocal-telephone');
 const attente = [];          // vocaux pas encore confirmés par l'ordinateur, du plus ancien au plus récent
 const donnees = new Map();   // id → WAV (ArrayBuffer) des vocaux enregistrés pendant cette session
