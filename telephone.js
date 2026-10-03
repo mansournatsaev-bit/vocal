@@ -216,6 +216,10 @@ function versInt16(trame) {
   return pcm;
 }
 
+// Un vocal envoyé fait forcément moins de 5 minutes : arrivé à 5 minutes, tout ce qui a été dit
+// depuis le dernier envoi est effacé et l'enregistrement repart de 0.
+const DUREE_MAX = 5 * 60;  // s
+
 function recevoirPCM(pcm) {
   if (!enAppel) return;
   morceaux.push(pcm);
@@ -225,6 +229,16 @@ function recevoirPCM(pcm) {
     const v = Math.abs(pcm[i]);
     if (v > crete) crete = v;
   }
+  if (frames >= tauxEch * DUREE_MAX) effacerSegment();
+}
+
+function effacerSegment() {
+  morceaux = [];
+  frames = 0;
+  perduSegment = 0;
+  debutSegment = Date.now();
+  console.info('Vocal de 5 minutes effacé : enregistrement reparti de 0');
+  flash('Effacé (5 min)', 'refus');
 }
 
 function rafraichir() {
