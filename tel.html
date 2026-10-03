@@ -7,7 +7,7 @@
   <title>Vocal</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icone.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=17">
+  <link rel="stylesheet" href="style.css?v=15">
 </head>
 <body>
   <div class="tel">
@@ -32,6 +32,15 @@
         <button class="bouton-secondaire" id="ecran-noir" hidden>Écran noir (l'appel continue, double-touche pour revenir)</button>
       </section>
 
+      <section class="volume" id="volume" hidden>
+        <div class="volume-tete"><span>Volume</span><span id="volume-valeur"></span></div>
+        <div class="volume-reglage">
+          <button class="volume-bouton" id="volume-moins" aria-label="Baisser le volume">−</button>
+          <input type="range" id="volume-curseur" min="0" max="100" step="1" aria-label="Volume">
+          <button class="volume-bouton" id="volume-plus" aria-label="Monter le volume">+</button>
+        </div>
+      </section>
+
       <section class="journal" id="journal" hidden>
         <h2>Envois</h2>
         <ol class="liste" id="liste"></ol>
@@ -48,7 +57,7 @@
   <audio id="son-distant" autoplay playsinline></audio>
 
   <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
-  <script src="commun.js?v=17"></script>
-  <script src="telephone.js?v=17"></script>
+  <script src="commun.js?v=15"></script>
+  <script src="telephone.js?v=15"></script>
 </body>
 </html>

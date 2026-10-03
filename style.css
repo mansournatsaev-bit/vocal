@@ -162,6 +162,45 @@ h2 { font-size: 15px; }
 .liste .info { flex: 1; color: var(--doux); }
 .liste .info.coupe { color: var(--attention); }
 #ecran-noir { white-space: normal; text-align: center; }
+
+/* Volume (appli Android) : au milieu de l'écran. */
+.volume {
+  margin: auto 0;
+  padding: 16px;
+  border: 1px solid var(--ligne);
+  border-radius: 18px;
+  background: var(--surface);
+}
+.volume-tete { display: flex; justify-content: space-between; font-weight: 650; margin-bottom: 12px; }
+#volume-valeur { color: var(--doux); font-variant-numeric: tabular-nums; }
+.volume-reglage { display: flex; align-items: center; gap: 12px; }
+.volume-bouton {
+  width: 52px; height: 52px; flex: none;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--ligne);
+  background: var(--surface-2);
+  font-size: 28px; font-weight: 600; line-height: 1;
+}
+#volume-curseur {
+  --rempli: 50%;
+  flex: 1; min-width: 0; height: 44px; margin: 0;
+  -webkit-appearance: none; appearance: none;
+  background: transparent;
+}
+#volume-curseur::-webkit-slider-runnable-track {
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--accent) var(--rempli), var(--surface-2) var(--rempli));
+}
+#volume-curseur::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 32px; height: 32px;
+  margin-top: -11px;
+  border-radius: 50%;
+  border: 3px solid var(--sur-accent);
+  background: var(--accent);
+}
 .liste .statut { font-size: 14px; font-weight: 600; color: var(--doux); }
 .liste li[data-ton="ok"] .statut { color: var(--ok); }
 .liste li[data-ton="envoi"] .statut { color: var(--attention); }

@@ -6,7 +6,8 @@ const el = {
   etat: $('#etat'), etatTexte: $('#etat-texte'), chrono: $('#chrono'), raccrocher: $('#raccrocher'),
   niveau: $('#niveau'), niveauOrdi: $('#niveau-ordi'), alerte: $('#alerte'),
   journal: $('#journal'), liste: $('#liste'), voile: $('#voile'), telecommande: $('#telecommande'),
-  ecranNoir: $('#ecran-noir'),
+  ecranNoir: $('#ecran-noir'), volume: $('#volume'), volumeValeur: $('#volume-valeur'),
+  volumeCurseur: $('#volume-curseur'), volumeMoins: $('#volume-moins'), volumePlus: $('#volume-plus'),
   bouton: $('#gros-bouton'), boutonTitre: $('#bouton-titre'), boutonSous: $('#bouton-sous'),
   son: $('#son-distant'),
 };
@@ -37,6 +38,29 @@ el.raccrocher.addEventListener('click', () => raccrocher());
 el.ecranNoir.addEventListener('click', () => natif?.ecranNoir());
 // Appelée par l'appli Android quand on appuie sur un bouton de volume.
 window.vocalEnvoyer = envoyerDepuisBouton;
+
+// Dans l'appli, les boutons de volume envoient le vocal : le volume se règle ici, au milieu de l'écran.
+if (natif && natif.volume) {
+  el.volume.hidden = false;
+  afficherVolume(natif.volume());
+  el.volumeCurseur.addEventListener('input', () => {
+    const reel = natif.reglerVolume(Number(el.volumeCurseur.value));
+    el.volumeValeur.textContent = reel + ' %';
+    el.volumeCurseur.style.setProperty('--rempli', el.volumeCurseur.value + '%');
+  });
+  el.volumeCurseur.addEventListener('change', () => afficherVolume(natif.volume()));
+  el.volumeMoins.addEventListener('click', () => afficherVolume(natif.changerVolume(-1)));
+  el.volumePlus.addEventListener('click', () => afficherVolume(natif.changerVolume(1)));
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') afficherVolume(natif.volume());
+  });
+}
+
+function afficherVolume(pourcent) {
+  el.volumeCurseur.value = pourcent;
+  el.volumeCurseur.style.setProperty('--rempli', pourcent + '%');
+  el.volumeValeur.textContent = pourcent + ' %';
+}
 
 // Les navigateurs coupent le son tant qu'on n'a pas touché la page : le premier toucher le débloque.
 document.addEventListener('pointerdown', () => {
@@ -183,10 +207,6 @@ function versInt16(trame) {
   return pcm;
 }
 
-// Un vocal envoyé fait forcément moins de 5 minutes : arrivé à 5 minutes, tout ce qui a été dit
-// depuis le dernier envoi est effacé et l'enregistrement repart de 0.
-const DUREE_MAX = 5 * 60;  // s
-
 function recevoirPCM(pcm) {
   if (!enAppel) return;
   morceaux.push(pcm);
@@ -196,16 +216,6 @@ function recevoirPCM(pcm) {
     const v = Math.abs(pcm[i]);
     if (v > crete) crete = v;
   }
-  if (frames >= tauxEch * DUREE_MAX) effacerSegment();
-}
-
-function effacerSegment() {
-  morceaux = [];
-  frames = 0;
-  perduSegment = 0;
-  debutSegment = Date.now();
-  console.info('Vocal de 5 minutes effacé : enregistrement reparti de 0');
-  flash('Effacé (5 min)', 'refus');
 }
 
 function rafraichir() {
