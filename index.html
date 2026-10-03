@@ -9,7 +9,8 @@
     if (/Android|iPhone|iPad/i.test(navigator.userAgent)) location.replace('tel.html');
   </script>
   <link rel="icon" href="icone.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=15">
+  <link rel="stylesheet" href="style.css?v=16">
+  <link rel="preconnect" href="https://0.peerjs.com">
 </head>
 <body>
   <div class="pc">
@@ -46,8 +47,8 @@
   <div class="voile" id="activer-son" hidden>Clique n'importe où pour entendre l'appel</div>
   <audio id="son-distant" autoplay></audio>
 
-  <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
-  <script src="commun.js?v=15"></script>
-  <script src="ecoute.js?v=15"></script>
+  <script src="peerjs.min.js?v=1.5.5"></script>
+  <script src="commun.js?v=16"></script>
+  <script src="ecoute.js?v=16"></script>
 </body>
 </html>

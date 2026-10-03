@@ -26,11 +26,14 @@ let enAppel = false, demarrage = false, microCoupe = false, erreurMicro = '';
 let morceaux = [], frames = 0, crete = 0, creteOrdi = 0, dernierPCM = 0, debutSegment = 0, debutAppel = 0;
 let perduSegment = 0;        // secondes de micro manquantes dans le segment en cours (remplacées par du silence)
 let peer = null, conn = null, appel = null, tentative = null;
-let appelOk = false, appelDepuis = 0, dernierSigne = 0, connDepuis = 0, idPrisLe = 0;
+let appelOk = false, appelDepuis = 0, dernierSigne = 0, connDepuis = 0, idPrisLe = 0, injoignableLe = 0;
 let envoiEnCours = false, gardien = null, horloge = null, veille = null;
 let silence = null, sonsCtx = null, dernierAppuiDistant = 0;  // bouton des écouteurs
 
+jalon('Page prête');
 chargerAttente();
+// Connexion au serveur et demande du micro en parallèle : l'appel s'établit plus vite.
+if (window.Peer) demarrerReseau();
 demarrer();
 
 el.bouton.addEventListener('click', () => (enAppel ? envoyer() : demarrer()));
@@ -107,7 +110,7 @@ async function demarrer() {
     micro = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 },
     });
-    console.info('Démarrage : micro obtenu');
+    jalon('Micro obtenu');
     await brancherCapture(micro.getAudioTracks()[0]);
   } catch (e) {
     console.info(`Démarrage impossible : ${e.name} ${e.message}`);
@@ -143,7 +146,13 @@ async function demarrer() {
   clearInterval(horloge);
   horloge = setInterval(rafraichir, 100);
   demarrerReseau();
+  if (liaisonOuverte()) lancerAppel();  // l'ordinateur était déjà relié pendant la demande du micro
   rafraichir();
+}
+
+// Étapes du démarrage, avec le temps écoulé depuis l'ouverture de la page (journal de l'appli).
+function jalon(texte) {
+  console.info(`${texte} (${Math.round(performance.now())} ms)`);
 }
 
 // Capture brute du micro. Chrome lit la piste directement, sans attendre de toucher l'écran ;
@@ -438,7 +447,10 @@ function jouerNotes({ notes, ecart }) {
 function demarrerReseau() {
   if (!peer || peer.destroyed) {
     peer = new Peer(ID_TELEPHONE, optionsPeer());
-    peer.on('open', surveiller);
+    peer.on('open', () => {
+      jalon('Serveur connecté');
+      surveiller();
+    });
     peer.on('disconnected', majEtat);
     peer.on('error', erreurPeer);
     peer.on('connection', accepter);
@@ -468,7 +480,7 @@ function surveiller() {
   // PeerJS détruit la connexion si la place est encore prise à l'ouverture (rechargement rapide) :
   // on en recrée une tant qu'on a un appel ou des vocaux à envoyer.
   if (!peer || peer.destroyed) {
-    if (enAppel || attente.length) demarrerReseau();
+    if (enAppel || demarrage || attente.length) demarrerReseau();
     return;
   }
   if (peer.disconnected) {
@@ -494,10 +506,12 @@ function surveiller() {
 function essayerConnexion() {
   if (tentative || liaisonOuverte() || !peer?.open) return;
   const c = tentative = peer.connect(ID_ORDI, { serialization: 'raw', reliable: true });
+  surveillerIce(c);
+  // En 4G, passer par un relais peut prendre plusieurs secondes : on laisse 15 s à la tentative.
   const abandon = setTimeout(() => {
     if (!c.open) c.close();
     if (tentative === c) tentative = null;
-  }, 8000);
+  }, 15000);
   c.on('open', () => {
     clearTimeout(abandon);
     if (tentative === c) tentative = null;
@@ -515,6 +529,7 @@ function essayerConnexion() {
 // la liaison gardée. Si notre liaison vient de s'ouvrir, les deux côtés se sont appelés en même
 // temps et on garde la nôtre ; sinon c'est une nouvelle page d'ordinateur qui remplace l'ancienne.
 function accepter(c) {
+  surveillerIce(c);
   c.on('open', () => {
     if (liaisonOuverte() && Date.now() - connDepuis < 5000) return c.close();
     tentative?.close();
@@ -525,10 +540,24 @@ function accepter(c) {
   c.on('error', e => console.warn('Liaison', e));
 }
 
+// L'ordinateur est en ligne mais impossible à joindre depuis ce réseau (4G sans relais, pare-feu…).
+function surveillerIce(c) {
+  const pc = c.peerConnection;
+  if (!pc) return;
+  pc.addEventListener('iceconnectionstatechange', () => {
+    if (pc.iceConnectionState !== 'failed') return;
+    injoignableLe = Date.now();
+    jalon('Ordinateur injoignable depuis ce réseau');
+    majEtat();
+  });
+}
+
 function brancher(c) {
   if (conn && conn !== c) conn.close();
   conn = c;
   dernierSigne = connDepuis = Date.now();
+  injoignableLe = 0;
+  jalon("Liaison avec l'ordinateur ouverte");
   c.on('data', d => {
     if (conn !== c) return;
     dernierSigne = Date.now();
@@ -559,6 +588,7 @@ function lancerAppel() {
   a.on('stream', flux => {
     if (appel !== a || el.son.srcObject === flux) return;
     appelOk = true;
+    jalon('Appel audio établi');
     el.son.srcObject = flux;
     el.son.play().catch(() => {});
     suivreNiveau(flux.getAudioTracks()[0], c => { if (appel === a && c > creteOrdi) creteOrdi = c; });
@@ -635,9 +665,9 @@ function vidange(canal) {
 // Une fois raccroché et tout envoyé, on libère la connexion.
 function verifierFin() {
   majEtat();
-  if (enAppel || attente.length || !peer) return;
+  if (enAppel || demarrage || attente.length || !peer) return;
   setTimeout(() => {
-    if (enAppel || attente.length || !peer) return;
+    if (enAppel || demarrage || attente.length || !peer) return;
     conn?.close();
     peer.destroy();
     peer = conn = tentative = null;
@@ -666,7 +696,9 @@ function majEtat() {
       ? ['Déjà ouvert sur un autre téléphone ? Nouvel essai…', 'erreur']
       : ['Connexion…', 'attente'];
   } else if (!liaisonOuverte()) {
-    [texte, ton] = ["En attente de l'ordinateur…", 'attente'];
+    [texte, ton] = Date.now() - injoignableLe < 30000
+      ? ['Ordinateur injoignable depuis ce réseau', 'erreur']
+      : ["En attente de l'ordinateur…", 'attente'];
   } else if (!appelOk) {
     [texte, ton] = ['Connexion audio…', 'attente'];
   } else {
