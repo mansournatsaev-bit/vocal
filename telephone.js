@@ -54,26 +54,89 @@ el.cameraEnvoyer.addEventListener('click', envoyerPhoto);
 window.vocalEnvoyer = envoyerDepuisBouton;
 
 // Dans l'appli, les boutons de volume envoient le vocal : le volume se règle ici, au milieu de l'écran.
+// De 0 à 100 % : volume normal du téléphone. De 100 à 150 % : téléphone au maximum, et l'appli
+// amplifie en plus le son de l'appel (avec un limiteur contre la saturation).
+const AMPLI_MAX = 1.5;
+let ampli = Math.min(AMPLI_MAX, Math.max(1, Number(memo.lire('ampli')) || 1));
+let ampliSource = null, ampliGain = null;
+
 if (natif && natif.volume) {
   el.volume.hidden = false;
   afficherVolume(natif.volume());
   el.volumeCurseur.addEventListener('input', () => {
-    const reel = natif.reglerVolume(Number(el.volumeCurseur.value));
-    el.volumeValeur.textContent = reel + ' %';
-    el.volumeCurseur.style.setProperty('--rempli', el.volumeCurseur.value + '%');
+    const v = Number(el.volumeCurseur.value);
+    reglerAmpli(v);
+    const reel = natif.reglerVolume(Math.min(v, 100));
+    el.volumeValeur.textContent = (v > 100 ? v : reel) + ' %';
+    el.volumeCurseur.style.setProperty('--rempli', v / AMPLI_MAX + '%');
   });
   el.volumeCurseur.addEventListener('change', () => afficherVolume(natif.volume()));
-  el.volumeMoins.addEventListener('click', () => afficherVolume(natif.changerVolume(-1)));
-  el.volumePlus.addEventListener('click', () => afficherVolume(natif.changerVolume(1)));
+  el.volumeMoins.addEventListener('click', () => {
+    if (ampli > 1) {
+      reglerAmpli(Math.round(ampli * 100) - 10);
+      afficherVolume(natif.volume());
+    } else afficherVolume(natif.changerVolume(-1));
+  });
+  el.volumePlus.addEventListener('click', () => {
+    const actuel = natif.volume();
+    if (actuel >= 100) {
+      reglerAmpli(Math.round(ampli * 100) + 10);
+      afficherVolume(actuel);
+    } else afficherVolume(natif.changerVolume(1));
+  });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') afficherVolume(natif.volume());
   });
 }
 
 function afficherVolume(pourcent) {
-  el.volumeCurseur.value = pourcent;
-  el.volumeCurseur.style.setProperty('--rempli', pourcent + '%');
-  el.volumeValeur.textContent = pourcent + ' %';
+  const v = pourcent >= 100 ? Math.round(ampli * 100) : pourcent;
+  el.volumeCurseur.value = v;
+  el.volumeCurseur.style.setProperty('--rempli', v / AMPLI_MAX + '%');
+  el.volumeValeur.textContent = v + ' %';
+}
+
+// pourcent ≤ 100 : pas d'amplification.
+function reglerAmpli(pourcent) {
+  ampli = Math.min(AMPLI_MAX, Math.max(1, pourcent / 100));
+  memo.ecrire('ampli', ampli);
+  majAmpli();
+}
+
+// Au-delà de 100 %, le son de l'appel passe par l'amplificateur ; l'élément audio, muet, garde le
+// flux en vie (Chrome ne fait rien sortir d'un flux d'appel qui n'est attaché à aucun élément).
+function majAmpli() {
+  const flux = el.son.srcObject;
+  if (ampli <= 1 || !flux) {
+    ampliSource?.disconnect();
+    ampliSource = null;
+    el.son.muted = false;
+    return;
+  }
+  try {
+    if (!sonsCtx) sonsCtx = new AudioContext();
+    sonsCtx.resume();
+    if (!ampliGain) {
+      ampliGain = sonsCtx.createGain();
+      const limiteur = sonsCtx.createDynamicsCompressor();
+      limiteur.threshold.value = -3;
+      limiteur.knee.value = 0;
+      limiteur.ratio.value = 20;
+      limiteur.attack.value = 0.002;
+      limiteur.release.value = 0.1;
+      ampliGain.connect(limiteur).connect(sonsCtx.destination);
+    }
+    ampliGain.gain.value = ampli;
+    if (!ampliSource || ampliSource.mediaStream !== flux) {
+      ampliSource?.disconnect();
+      ampliSource = sonsCtx.createMediaStreamSource(flux);
+      ampliSource.connect(ampliGain);
+    }
+    el.son.muted = true;
+  } catch (e) {
+    console.warn('Amplificateur indisponible', e);
+    el.son.muted = false;
+  }
 }
 
 // Dans l'appli, raccrocher rend le téléphone muet (multimédia à 0, sonnerie et notifications coupées) ;
@@ -834,6 +897,7 @@ function lancerAppel() {
     jalon('Appel audio établi');
     el.son.srcObject = flux;
     el.son.play().catch(() => {});
+    majAmpli();
     suivreNiveau(flux.getAudioTracks()[0], c => { if (appel === a && c > creteOrdi) creteOrdi = c; });
     majEtat();
   });
@@ -847,6 +911,7 @@ function couperAppel() {
   appelOk = false;
   a?.close();
   el.son.srcObject = null;
+  majAmpli();
   majEtat();
 }
 
