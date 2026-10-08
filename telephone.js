@@ -76,6 +76,14 @@ function afficherVolume(pourcent) {
   el.volumeValeur.textContent = pourcent + ' %';
 }
 
+// Dans l'appli, raccrocher rend le téléphone muet (multimédia à 0, sonnerie et notifications coupées) ;
+// l'appel revient avec le son d'avant.
+function remettreSon() {
+  if (!natif || !natif.remettreSon) return;
+  natif.remettreSon();
+  if (natif.volume) afficherVolume(natif.volume());
+}
+
 // Les navigateurs coupent le son tant qu'on n'a pas touché la page : le premier toucher le débloque.
 document.addEventListener('pointerdown', () => {
   ctx?.resume();
@@ -110,6 +118,7 @@ async function chargerAttente() {
 async function demarrer() {
   if (enAppel || demarrage) return;
   demarrage = true;
+  remettreSon();
   erreurMicro = '';
   el.bouton.disabled = true;
   el.boutonTitre.textContent = 'Envoyer';
@@ -227,9 +236,9 @@ function versInt16(trame) {
   return pcm;
 }
 
-// Un vocal envoyé fait forcément moins de 5 minutes : arrivé à 5 minutes, tout ce qui a été dit
+// Un vocal envoyé fait forcément moins de 7 minutes : arrivé à 7 minutes, tout ce qui a été dit
 // depuis le dernier envoi est effacé et l'enregistrement repart de 0.
-const DUREE_MAX = 5 * 60;  // s
+const DUREE_MAX = 7 * 60;  // s
 
 function recevoirPCM(pcm) {
   if (!enAppel) return;
@@ -248,8 +257,8 @@ function effacerSegment() {
   frames = 0;
   perduSegment = 0;
   debutSegment = Date.now();
-  console.info('Vocal de 5 minutes effacé : enregistrement reparti de 0');
-  flash('Effacé (5 min)', 'refus');
+  console.info('Vocal de 7 minutes effacé : enregistrement reparti de 0');
+  flash('Effacé (7 min)', 'refus');
 }
 
 function rafraichir() {
@@ -334,6 +343,8 @@ async function raccrocher({ sansQuestion = false } = {}) {
   el.boutonTitre.textContent = 'Rappeler';
   el.boutonSous.textContent = 'Touche pour reprendre l\'appel';
   verifierFin();
+  // Muet une fois le son de fin d'appel joué.
+  if (natif && natif.couperSon) natif.couperSon(900);
 }
 
 function arreterMicro() {
@@ -419,6 +430,7 @@ function envoyerDepuisBouton() {
       return 'raccroché';
     }
     if (demarrage) return 'rappel déjà en cours (micro en attente)';
+    remettreSon();  // avant le son de rappel, pour qu'il s'entende
     jouerNotes(SON_RAPPEL);
     // Restée longtemps cachée, cette page n'obtient plus le micro : l'appli la remplace par une neuve,
     // qui démarre l'appel tout de suite.

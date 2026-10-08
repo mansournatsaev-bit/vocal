@@ -7,8 +7,8 @@ cliquer pour rejoindre.
 
 - **Téléphone** : l'appel démarre tout seul et le micro est enregistré en continu, en qualité
   maximale. Le gros bouton **Envoyer** (tiers bas de l'écran) envoie à l'ordinateur un fichier WAV
-  avec tout ce qui a été dit depuis l'appui précédent. Un vocal fait forcément moins de 5 minutes :
-  à 5 minutes sans envoi, tout est effacé (« Effacé (5 min) ») et le compteur repart de 0.
+  avec tout ce qui a été dit depuis l'appui précédent. Un vocal fait forcément moins de 7 minutes :
+  à 7 minutes sans envoi, tout est effacé (« Effacé (7 min) ») et le compteur repart de 0.
 - **Ordinateur** : on entend l'appel et on parle. Le tiers haut de l'écran annonce « Tu as reçu un
   vocal ». Les vocaux arrivent dans l'ordre : clic = télécharger, glisser = le déposer où on veut
   (bureau, dossier, page web). **Tout effacer** vide la liste.
@@ -26,7 +26,10 @@ https://mansournatsaev-bit.github.io/vocal/vocal.apk) affiche la même page tél
 - **volume + ou volume −** envoie le vocal, écran allumé comme écran éteint (bip-bip = envoyé) ;
 - le bouton pause/lecture des écouteurs envoie aussi le vocal ;
 - l'appel et l'enregistrement continuent écran éteint (notification « Appel en cours ») ;
-- le bouton **Écran noir** garde l'appel en cachant l'écran (double-toucher pour revenir).
+- le bouton **Écran noir** garde l'appel en cachant l'écran (double-toucher pour revenir) ;
+- **raccrocher rend le téléphone muet** : multimédia à 0, sonnerie, notifications et sons du système
+  coupés (vibreur, ou muet complet si Vocal a l'accès « Ne pas déranger »). Au rappel, ou quand on
+  ferme l'appli, tout revient comme avant. Les alarmes ne sont pas touchées.
 
 Pour quitter, balayer l'appli dans les applis récentes : ça raccroche. La touche Accueil la laisse tourner.
 
