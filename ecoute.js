@@ -204,10 +204,11 @@ async function finaliser(c, id) {
 
   if (!affiches.has(id) && !(await base.lire(id))) {
     const m = r.meta;
+    const photo = m.type === 'photo';
     const vocal = {
-      id, numero: Number(m.numero) || 0, debut: Number(m.debut) || Date.now(),
-      duree: Number(m.duree) || 0, nom: String(m.nom || `vocal-${id}.wav`), recuLe: Date.now(),
-      blob: new Blob(r.morceaux, { type: 'audio/wav' }),
+      id, type: photo ? 'photo' : 'vocal', numero: Number(m.numero) || 0, debut: Number(m.debut) || Date.now(),
+      duree: Number(m.duree) || 0, nom: String(m.nom || (photo ? `photo-${id}.jpg` : `vocal-${id}.wav`)),
+      recuLe: Date.now(), blob: new Blob(r.morceaux, { type: photo ? 'image/jpeg' : 'audio/wav' }),
     };
     try {
       await base.mettre(vocal);
@@ -235,25 +236,44 @@ async function chargerVocaux() {
 const ICONE_ONDE = '<svg class="fichier-icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4"/></svg>';
 const ICONE_LECTURE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
 const ICONE_PAUSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>';
+const ICONE_TELECHARGER = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m-4.5-4.5L12 15l4.5-4.5M5 19h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
+// Vocal : clic = télécharger, bouton rond = écouter. Photo : clic = voir en grand, bouton rond = télécharger.
 function afficherVocal(v, nouveau) {
   const url = URL.createObjectURL(v.blob);
+  const photo = v.type === 'photo';
   const li = document.createElement('li');
   li.className = 'fichier' + (nouveau ? ' nouveau' : '');
-  li.innerHTML = `
+  li.innerHTML = photo ? `
+    <a class="fichier-lien" draggable="true" target="_blank" title="Clique pour voir la photo en grand, ou glisse-la où tu veux">
+      <img class="fichier-miniature" alt="">
+      <span class="fichier-texte"><span class="fichier-nom"></span><span class="fichier-meta"></span></span>
+      <span class="fichier-action">Voir</span>
+    </a>
+    <a class="ecouter" aria-label="Télécharger la photo">${ICONE_TELECHARGER}</a>` : `
     <a class="fichier-lien" draggable="true" title="Clique pour télécharger, ou glisse le fichier où tu veux">
       ${ICONE_ONDE}
       <span class="fichier-texte"><span class="fichier-nom"></span><span class="fichier-meta"></span></span>
       <span class="fichier-action">Télécharger</span>
     </a>
     <button class="ecouter" aria-label="Écouter">${ICONE_LECTURE}</button>`;
-  li.querySelector('.fichier-nom').textContent = 'Vocal ' + v.numero;
-  li.querySelector('.fichier-meta').textContent = `${duree(v.duree)} · ${dateHeure(v.debut)}`;
   const lien = li.querySelector('a');
   lien.href = url;
-  lien.download = v.nom;
   rendreGlissable(lien, () => v);
-  li.querySelector('.ecouter').addEventListener('click', () => ecouter(v.id));
+  if (photo) {
+    li.querySelector('.fichier-nom').textContent = 'Photo ' + v.numero;
+    li.querySelector('.fichier-meta').textContent =
+      `${dateHeure(v.debut)} · ${(v.blob.size / 1048576).toFixed(1).replace('.', ',')} Mo`;
+    li.querySelector('img').src = url;
+    const telecharger = li.querySelector('.ecouter');
+    telecharger.href = url;
+    telecharger.download = v.nom;
+  } else {
+    li.querySelector('.fichier-nom').textContent = 'Vocal ' + v.numero;
+    li.querySelector('.fichier-meta').textContent = `${duree(v.duree)} · ${dateHeure(v.debut)}`;
+    lien.download = v.nom;
+    li.querySelector('.ecouter').addEventListener('click', () => ecouter(v.id));
+  }
 
   // Dans l'ordre d'enregistrement : le plus récent en bas.
   const suivant = [...affiches.values()]
@@ -273,14 +293,15 @@ function afficherVocal(v, nouveau) {
   majZone();
 }
 
-// Glisser un vocal le dépose comme un vrai fichier : sur le bureau, dans un dossier ou dans une page web.
+// Glisser un vocal ou une photo le dépose comme un vrai fichier : bureau, dossier ou page web.
 function rendreGlissable(lien, obtenirVocal) {
   lien.addEventListener('dragstart', e => {
     const v = obtenirVocal();
     const a = v && affiches.get(v.id);
     if (!a) return e.preventDefault();
-    try { e.dataTransfer.items.add(new File([v.blob], v.nom, { type: 'audio/wav' })); } catch {}
-    e.dataTransfer.setData('DownloadURL', `audio/wav:${v.nom}:${a.url}`);
+    const mime = v.blob.type || 'audio/wav';
+    try { e.dataTransfer.items.add(new File([v.blob], v.nom, { type: mime })); } catch {}
+    e.dataTransfer.setData('DownloadURL', `${mime}:${v.nom}:${a.url}`);
     e.dataTransfer.effectAllowed = 'copy';
   });
 }
@@ -297,6 +318,7 @@ function ecouter(id) {
 function majLecture(id) {
   enLecture = id;
   for (const [cle, a] of affiches) {
+    if (a.vocal.type === 'photo') continue;  // le bouton rond d'une photo sert à la télécharger
     const actif = cle === id;
     a.li.classList.toggle('en-lecture', actif);
     const bouton = a.li.querySelector('.ecouter');
@@ -306,7 +328,7 @@ function majLecture(id) {
 }
 
 async function toutEffacer() {
-  if (!affiches.size || !confirm(`Effacer les ${affiches.size} vocaux ?`)) return;
+  if (!affiches.size || !confirm(`Effacer les ${affiches.size} vocaux et photos ?`)) return;
   lecteur.pause();
   majLecture(null);
   for (const [id, a] of affiches) {
@@ -321,10 +343,14 @@ async function toutEffacer() {
 }
 
 function majResume() {
-  const n = affiches.size;
-  const total = [...affiches.values()].reduce((s, a) => s + a.vocal.duree, 0);
-  el.resume.textContent = n ? `${n} ${n > 1 ? 'vocaux' : 'vocal'} · ${duree(total)}` : 'Vocaux reçus';
-  el.toutEffacer.hidden = n === 0;
+  const vocaux = [...affiches.values()].filter(a => a.vocal.type !== 'photo');
+  const photos = affiches.size - vocaux.length;
+  const total = vocaux.reduce((s, a) => s + a.vocal.duree, 0);
+  const parties = [];
+  if (vocaux.length) parties.push(`${vocaux.length} ${vocaux.length > 1 ? 'vocaux' : 'vocal'} · ${duree(total)}`);
+  if (photos) parties.push(`${photos} photo${photos > 1 ? 's' : ''}`);
+  el.resume.textContent = parties.length ? parties.join(' · ') : 'Vocaux reçus';
+  el.toutEffacer.hidden = affiches.size === 0;
 }
 
 // ---------- Zone « Tu as reçu » (le tiers haut de l'écran) ----------
@@ -338,10 +364,20 @@ function majZone() {
     const { meta, recu } = reception;
     const p = meta.taille ? recu / meta.taille : 0;
     z.dataset.etat = 'reception';
-    titre = `Réception du vocal ${meta.numero}…`;
-    sous = `${duree(meta.duree)} · ${Math.round(p * 100)} %`;
+    if (meta.type === 'photo') {
+      titre = `Réception de la photo ${meta.numero}…`;
+      sous = `${Math.round(p * 100)} %`;
+    } else {
+      titre = `Réception du vocal ${meta.numero}…`;
+      sous = `${duree(meta.duree)} · ${Math.round(p * 100)} %`;
+    }
     el.zoneProgression.hidden = false;
     el.zoneBarre.style.transform = `scaleX(${p})`;
+  } else if (dernier && dernier.type === 'photo') {
+    z.dataset.etat = 'recu';
+    titre = 'Tu as reçu une photo';
+    sous = `Photo ${dernier.numero} · ${heure(dernier.debut)}`;
+    indice = 'Clique pour la voir en grand, ou glisse-la où tu veux';
   } else if (dernier) {
     z.dataset.etat = 'recu';
     titre = 'Tu as reçu un vocal';
@@ -349,18 +385,20 @@ function majZone() {
     indice = 'Clique pour le télécharger, ou glisse-le où tu veux';
   } else {
     z.dataset.etat = 'vide';
-    titre = 'Aucun vocal pour l\'instant';
-    sous = 'Les vocaux envoyés depuis le téléphone arriveront ici';
+    titre = 'Rien reçu pour l\'instant';
+    sous = 'Les vocaux et les photos envoyés depuis le téléphone arriveront ici';
   }
 
   const a = z.dataset.etat === 'recu' && affiches.get(dernier.id);
+  z.removeAttribute('download');
+  z.removeAttribute('target');
   if (a) {
     z.href = a.url;
-    z.download = dernier.nom;
+    if (dernier.type === 'photo') z.target = '_blank';  // voir en grand
+    else z.download = dernier.nom;
     z.draggable = true;
   } else {
     z.removeAttribute('href');
-    z.removeAttribute('download');
     z.draggable = false;
   }
   el.zoneTitre.textContent = titre;

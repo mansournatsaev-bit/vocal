@@ -10,14 +10,19 @@ const el = {
   volumeCurseur: $('#volume-curseur'), volumeMoins: $('#volume-moins'), volumePlus: $('#volume-plus'),
   bouton: $('#gros-bouton'), boutonTitre: $('#bouton-titre'), boutonSous: $('#bouton-sous'),
   son: $('#son-distant'),
+  photo: $('#photo'), camera: $('#camera'), cameraVideo: $('#camera-video'), cameraCadre: $('#camera-cadre'),
+  cameraApercu: $('#camera-apercu'), cameraAide: $('#camera-aide'),
+  cameraBarrePrise: $('#camera-barre-prise'), cameraBarreEnvoi: $('#camera-barre-envoi'),
+  cameraAnnuler: $('#camera-annuler'), cameraPrendre: $('#camera-prendre'), cameraLampe: $('#camera-lampe'),
+  cameraReprendre: $('#camera-reprendre'), cameraScan: $('#camera-scan'), cameraEnvoyer: $('#camera-envoyer'),
 };
 
 // Présent quand la page tourne dans l'appli Android : elle gère les boutons de volume et l'écran noir.
 const natif = window.VocalNatif || null;
 
 const base = new Base('vocal-telephone');
-const attente = [];          // vocaux pas encore confirmés par l'ordinateur, du plus ancien au plus récent
-const donnees = new Map();   // id → WAV (ArrayBuffer) des vocaux enregistrés pendant cette session
+const attente = [];          // vocaux et photos pas encore confirmés par l'ordinateur, du plus ancien au plus récent
+const donnees = new Map();   // id → fichier (ArrayBuffer : WAV ou JPEG) préparé pendant cette session
 const accuses = new Map();   // id → fonction appelée quand l'ordinateur confirme la réception
 const lignes = new Map();    // id → <li> du journal
 
@@ -39,6 +44,13 @@ demarrer();
 el.bouton.addEventListener('click', () => (enAppel ? envoyer() : demarrer()));
 el.raccrocher.addEventListener('click', () => raccrocher());
 el.ecranNoir.addEventListener('click', () => natif?.ecranNoir());
+el.photo.addEventListener('click', ouvrirCamera);
+el.cameraAnnuler.addEventListener('click', fermerCamera);
+el.cameraPrendre.addEventListener('click', prendrePhoto);
+el.cameraLampe.addEventListener('click', basculerLampe);
+el.cameraReprendre.addEventListener('click', reprendrePhoto);
+el.cameraScan.addEventListener('click', basculerScan);
+el.cameraEnvoyer.addEventListener('click', envoyerPhoto);
 // Appelée par l'appli Android quand on appuie sur un bouton de volume.
 window.vocalEnvoyer = envoyerDepuisBouton;
 
@@ -86,7 +98,7 @@ addEventListener('beforeunload', e => {
 
 async function chargerAttente() {
   const restants = (await base.tout()).sort((a, b) => a.debut - b.debut);
-  for (const { wav, ...v } of restants) {
+  for (const { wav, fichier, ...v } of restants) {
     attente.push(v);
     ligne(v, 'En attente', 'attente');
   }
@@ -276,7 +288,7 @@ async function envoyer() {
   const v = { id: nouvelId(), numero, debut, duree: n / sr, perdu, nom: nomFichier(numero, debut) };
   const wav = encoderWav(pcm, n, sr);
   donnees.set(v.id, wav);
-  try { await base.mettre({ ...v, wav }); } catch (e) { console.warn('Sauvegarde locale impossible', e); }
+  try { await base.mettre({ ...v, fichier: wav }); } catch (e) { console.warn('Sauvegarde locale impossible', e); }
 
   attente.push(v);
   ligne(v, 'En attente', 'attente');
@@ -456,6 +468,214 @@ function jouerNotes({ notes, ecart }) {
   } catch {}
 }
 
+// ---------- Photo d'une feuille ----------
+// Appareil photo dans la page, en mode document : caméra arrière en pleine définition, cadre A4 pour
+// viser, sans flash, puis traitement « scan » (papier blanc, ombres effacées, texte foncé) avant l'envoi.
+
+const PHOTO_COTE_MAX = 3200;  // px : largement assez pour lire une feuille A4, et léger à envoyer en 4G
+let camera = null, capteurPhoto = null, lampe = false;
+let photoBrute = null, photoScan = null, scanActif = true;  // { blob, url }
+
+async function ouvrirCamera() {
+  el.camera.hidden = false;
+  montrerViseur();
+  try {
+    camera = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 4096 }, height: { ideal: 3072 } },
+    });
+  } catch (e) {
+    el.cameraPrendre.disabled = true;
+    el.cameraAide.textContent = e.name === 'NotAllowedError'
+      ? 'Caméra refusée : autorise-la dans les réglages, puis réessaie.'
+      : 'Caméra indisponible : ' + e.message;
+    return;
+  }
+  const piste = camera.getVideoTracks()[0];
+  // Mise au point, exposition et blancs en continu : le texte reste net si la feuille bouge un peu.
+  try {
+    await piste.applyConstraints({
+      advanced: [{ focusMode: 'continuous' }, { exposureMode: 'continuous' }, { whiteBalanceMode: 'continuous' }],
+    });
+  } catch {}
+  el.cameraVideo.srcObject = camera;
+  capteurPhoto = window.ImageCapture ? new ImageCapture(piste) : null;
+  el.cameraLampe.hidden = !(piste.getCapabilities && piste.getCapabilities().torch);
+  const reglages = piste.getSettings();
+  console.info(`Caméra ouverte : ${reglages.width}×${reglages.height}`);
+}
+
+function fermerCamera() {
+  camera?.getTracks().forEach(t => t.stop());
+  camera = capteurPhoto = null;
+  lampe = false;
+  el.cameraLampe.setAttribute('aria-pressed', 'false');
+  el.cameraVideo.srcObject = null;
+  oublierPhoto();
+  el.camera.hidden = true;
+}
+
+function montrerViseur() {
+  el.cameraVideo.hidden = el.cameraCadre.hidden = el.cameraBarrePrise.hidden = false;
+  el.cameraApercu.hidden = el.cameraBarreEnvoi.hidden = true;
+  el.cameraPrendre.disabled = false;
+  el.cameraAide.textContent = 'Cadre toute la feuille, bien à plat et éclairée';
+}
+
+async function basculerLampe() {
+  const piste = camera?.getVideoTracks()[0];
+  if (!piste) return;
+  lampe = !lampe;
+  try { await piste.applyConstraints({ advanced: [{ torch: lampe }] }); } catch { lampe = false; }
+  el.cameraLampe.setAttribute('aria-pressed', String(lampe));
+}
+
+async function prendrePhoto() {
+  if (!camera) return;
+  el.cameraPrendre.disabled = true;
+  el.cameraAide.textContent = 'Photo…';
+  let image = null;
+  // Pleine définition du capteur, et sans flash : il fait des reflets sur le papier.
+  if (capteurPhoto) {
+    try {
+      const possibles = await capteurPhoto.getPhotoCapabilities();
+      const options = { imageWidth: possibles.imageWidth.max, imageHeight: possibles.imageHeight.max };
+      if ((possibles.fillLightMode || []).includes('off')) options.fillLightMode = 'off';
+      image = await createImageBitmap(await capteurPhoto.takePhoto(options), { imageOrientation: 'from-image' });
+    } catch (e) {
+      console.info(`Photo pleine définition impossible (${e.message}) : image du viseur`);
+    }
+  }
+  if (!image) image = await createImageBitmap(el.cameraVideo);
+  el.cameraAide.textContent = 'Amélioration du texte…';
+  await new Promise(r => setTimeout(r, 30));  // laisse l'écran afficher le message avant le calcul
+  const toile = reduire(image, PHOTO_COTE_MAX);
+  image.close();
+  photoBrute = await enJpeg(toile);
+  ameliorerDocument(toile);
+  photoScan = await enJpeg(toile);
+  scanActif = true;
+  console.info(`Photo : ${toile.width}×${toile.height}, ${(photoScan.blob.size / 1048576).toFixed(1)} Mo`);
+  montrerApercu();
+}
+
+function montrerApercu() {
+  el.cameraVideo.hidden = el.cameraCadre.hidden = el.cameraBarrePrise.hidden = true;
+  el.cameraApercu.hidden = el.cameraBarreEnvoi.hidden = false;
+  el.cameraApercu.src = (scanActif ? photoScan : photoBrute).url;
+  el.cameraScan.setAttribute('aria-pressed', String(scanActif));
+  el.cameraScan.textContent = scanActif ? 'Texte net' : 'Original';
+  el.cameraEnvoyer.disabled = false;
+  el.cameraAide.textContent = 'Vérifie que le texte est lisible';
+}
+
+function basculerScan() {
+  scanActif = !scanActif;
+  montrerApercu();
+}
+
+function reprendrePhoto() {
+  oublierPhoto();
+  montrerViseur();
+}
+
+function oublierPhoto() {
+  for (const p of [photoBrute, photoScan]) if (p) URL.revokeObjectURL(p.url);
+  photoBrute = photoScan = null;
+  el.cameraApercu.removeAttribute('src');
+}
+
+async function envoyerPhoto() {
+  const choisie = scanActif ? photoScan : photoBrute;
+  if (!choisie) return;
+  el.cameraEnvoyer.disabled = true;
+  const numero = Number(memo.lire('photo-num') || 0) + 1;
+  memo.ecrire('photo-num', numero);
+  const maintenant = Date.now();
+  const v = { id: nouvelId(), type: 'photo', numero, debut: maintenant, duree: 0, nom: nomFichier(numero, maintenant, 'photo') };
+  const fichier = await choisie.blob.arrayBuffer();
+  donnees.set(v.id, fichier);
+  try { await base.mettre({ ...v, fichier }); } catch (e) { console.warn('Sauvegarde locale impossible', e); }
+  attente.push(v);
+  ligne(v, 'En attente', 'attente');
+  jouerNotes(SON_ENVOYE);
+  fermerCamera();
+  if (window.Peer) demarrerReseau();  // la photo part aussi quand l'appel est raccroché
+  pomper();
+}
+
+function reduire(image, coteMax) {
+  const echelle = Math.min(1, coteMax / Math.max(image.width, image.height));
+  const toile = document.createElement('canvas');
+  toile.width = Math.round(image.width * echelle);
+  toile.height = Math.round(image.height * echelle);
+  const c = toile.getContext('2d', { willReadFrequently: true });
+  c.imageSmoothingQuality = 'high';
+  c.drawImage(image, 0, 0, toile.width, toile.height);
+  return toile;
+}
+
+function enJpeg(toile) {
+  return new Promise(ok => toile.toBlob(blob => ok({ blob, url: URL.createObjectURL(blob) }), 'image/jpeg', 0.9));
+}
+
+// Traitement « scan » : on estime la couleur du papier en chaque point (image réduite où le texte est
+// effacé par un maximum local), puis on divise par ce fond. Le papier devient blanc partout, ombres et
+// dégradés compris, et le texte garde sa couleur, en plus foncé.
+function ameliorerDocument(toile) {
+  const w = toile.width, h = toile.height;
+  const c = toile.getContext('2d', { willReadFrequently: true });
+  const petite = document.createElement('canvas');
+  petite.width = Math.max(8, Math.round(w / 32));
+  petite.height = Math.max(8, Math.round(h / 32));
+  const pc = petite.getContext('2d', { willReadFrequently: true });
+  pc.drawImage(toile, 0, 0, petite.width, petite.height);
+  const reduite = pc.getImageData(0, 0, petite.width, petite.height);
+  maximumLocal(reduite, 3);
+  pc.putImageData(reduite, 0, 0);
+
+  const fond = document.createElement('canvas');
+  fond.width = w;
+  fond.height = h;
+  const fc = fond.getContext('2d', { willReadFrequently: true });
+  fc.imageSmoothingQuality = 'high';
+  fc.drawImage(petite, 0, 0, w, h);
+
+  const image = c.getImageData(0, 0, w, h);
+  const p = image.data, f = fc.getImageData(0, 0, w, h).data;
+  for (let i = 0; i < p.length; i += 4) {
+    for (let k = i; k < i + 3; k++) {
+      const v = (p[k] / (f[k] || 1) - 0.08) / 0.84;  // 1 = papier : il sature en blanc
+      p[k] = v <= 0 ? 0 : v >= 1 ? 255 : 255 * v * Math.sqrt(v);  // v^1,5 : texte plus foncé
+    }
+  }
+  c.putImageData(image, 0, 0);
+}
+
+// Maximum sur un carré de (2r+1)² pixels, canal par canal : efface le texte, garde le papier.
+function maximumLocal(img, r) {
+  const { width: w, height: h, data } = img;
+  const tmp = new Uint8ClampedArray(data.length);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      for (let k = 0; k < 3; k++) {
+        let m = 0;
+        for (let d = -r; d <= r; d++) m = Math.max(m, data[(y * w + Math.min(w - 1, Math.max(0, x + d))) * 4 + k]);
+        tmp[(y * w + x) * 4 + k] = m;
+      }
+    }
+  }
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      for (let k = 0; k < 3; k++) {
+        let m = 0;
+        for (let d = -r; d <= r; d++) m = Math.max(m, tmp[(Math.min(h - 1, Math.max(0, y + d)) * w + x) * 4 + k]);
+        data[(y * w + x) * 4 + k] = m;
+      }
+    }
+  }
+}
+
 // ---------- Réseau : liaison de données + appel ----------
 
 function demarrerReseau() {
@@ -629,7 +849,8 @@ async function pomper() {
   try {
     while (attente.length && liaisonOuverte()) {
       const v = attente[0];
-      const wav = donnees.get(v.id) || (await base.lire(v.id))?.wav;
+      const stocke = donnees.has(v.id) ? null : await base.lire(v.id);
+      const wav = donnees.get(v.id) || stocke?.fichier || stocke?.wav;  // « wav » : vocaux stockés avant les photos
       if (wav && !(await transmettre(v, wav))) {
         ligne(v, 'En attente', 'attente');
         break;
@@ -649,7 +870,10 @@ async function pomper() {
 async function transmettre(v, wav) {
   const c = conn, canal = c.dataChannel;
   let pourcent = -1;
-  envoyerMsg(c, { t: 'debut', id: v.id, numero: v.numero, debut: v.debut, duree: v.duree, nom: v.nom, taille: wav.byteLength });
+  envoyerMsg(c, {
+    t: 'debut', id: v.id, type: v.type || 'vocal', numero: v.numero, debut: v.debut, duree: v.duree,
+    nom: v.nom, taille: wav.byteLength,
+  });
   for (let o = 0; o < wav.byteLength; o += TAILLE_MORCEAU) {
     if (conn !== c || !c.open) return false;
     c.send(wav.slice(o, o + TAILLE_MORCEAU));
@@ -727,10 +951,15 @@ function ligne(v, statut, ton) {
   if (!li) {
     li = document.createElement('li');
     li.innerHTML = '<span class="num"></span><span class="info"></span><span class="statut"></span>';
-    li.querySelector('.num').textContent = '#' + v.numero;
-    const coupe = v.perdu >= 0.1 ? ` · ${v.perdu.toFixed(1).replace('.', ',')} s coupées` : '';
-    li.querySelector('.info').textContent = `${duree(v.duree)} · ${heure(v.debut)}${coupe}`;
-    if (coupe) li.querySelector('.info').classList.add('coupe');
+    if (v.type === 'photo') {
+      li.querySelector('.num').textContent = '📷' + v.numero;
+      li.querySelector('.info').textContent = `Photo · ${heure(v.debut)}`;
+    } else {
+      li.querySelector('.num').textContent = '#' + v.numero;
+      const coupe = v.perdu >= 0.1 ? ` · ${v.perdu.toFixed(1).replace('.', ',')} s coupées` : '';
+      li.querySelector('.info').textContent = `${duree(v.duree)} · ${heure(v.debut)}${coupe}`;
+      if (coupe) li.querySelector('.info').classList.add('coupe');
+    }
     el.liste.prepend(li);
     lignes.set(v.id, li);
     el.journal.hidden = false;

@@ -55,10 +55,11 @@ function heure(ms) {
   return new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-function nomFichier(numero, ms) {
+// type : 'vocal' (WAV) ou 'photo' (JPEG).
+function nomFichier(numero, ms, type = 'vocal') {
   const d = new Date(ms), p = n => String(n).padStart(2, '0');
-  return `vocal-${String(numero).padStart(3, '0')}_${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` +
-    `_${p(d.getHours())}h${p(d.getMinutes())}m${p(d.getSeconds())}.wav`;
+  return `${type}-${String(numero).padStart(3, '0')}_${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` +
+    `_${p(d.getHours())}h${p(d.getMinutes())}m${p(d.getSeconds())}.${type === 'photo' ? 'jpg' : 'wav'}`;
 }
 
 // L'appel en direct passe en Opus 128 kb/s au lieu des ~32 kb/s par défaut de WebRTC.

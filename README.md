@@ -12,6 +12,11 @@ cliquer pour rejoindre.
 - **Ordinateur** : on entend l'appel et on parle. Le tiers haut de l'écran annonce « Tu as reçu un
   vocal ». Les vocaux arrivent dans l'ordre : clic = télécharger, glisser = le déposer où on veut
   (bureau, dossier, page web). **Tout effacer** vide la liste.
+- **Photo d'une feuille** (téléphone) : appareil photo en mode document, avec un cadre A4, la mise
+  au point et l'exposition réglées pour du papier, et une photo en pleine définition. Le traitement
+  « Texte net » blanchit le papier, efface les ombres et fonce l'écriture (les couleurs restent).
+  « Original » envoie la photo telle quelle. Sur l'ordinateur, la photo arrive dans la même liste :
+  clic = l'ouvrir en grand, glisser = la déposer où on veut.
 
 ## Appli Android (bouton volume)
 

@@ -7,7 +7,7 @@
   <title>Vocal</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icone.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=18">
+  <link rel="stylesheet" href="style.css?v=19">
   <!-- Le serveur de mise en relation : la connexion se prépare pendant le chargement de la page. -->
   <link rel="preconnect" href="https://0.peerjs.com">
 </head>
@@ -29,6 +29,7 @@
           <span>Ordinateur</span>
           <div class="niveau"><div class="niveau-barre" id="niveau-ordi"></div></div>
         </div>
+        <button class="bouton-secondaire bouton-photo" id="photo">📷 Photo d'une feuille</button>
         <p class="alerte" id="alerte" hidden></p>
         <p class="petit" id="telecommande" hidden>🎧 Le bouton pause/lecture des écouteurs envoie aussi le vocal, même écran éteint (bip-bip = envoyé).</p>
         <button class="bouton-secondaire" id="ecran-noir" hidden>Écran noir (l'appel continue, double-touche pour revenir)</button>
@@ -55,11 +56,29 @@
     </button>
   </div>
 
+  <!-- Appareil photo en mode document : viseur avec cadre A4, puis aperçu « scan » avant l'envoi. -->
+  <div class="camera" id="camera" hidden>
+    <video class="camera-video" id="camera-video" autoplay playsinline muted></video>
+    <div class="camera-cadre" id="camera-cadre" aria-hidden="true"></div>
+    <img class="camera-apercu" id="camera-apercu" alt="Photo prise" hidden>
+    <p class="camera-aide" id="camera-aide">Cadre toute la feuille, bien à plat et éclairée</p>
+    <div class="camera-barre" id="camera-barre-prise">
+      <button class="camera-petit" id="camera-annuler">Annuler</button>
+      <button class="camera-declencheur" id="camera-prendre" aria-label="Prendre la photo"></button>
+      <button class="camera-petit" id="camera-lampe" hidden>Lampe</button>
+    </div>
+    <div class="camera-barre" id="camera-barre-envoi" hidden>
+      <button class="camera-petit" id="camera-reprendre">Reprendre</button>
+      <button class="camera-petit" id="camera-scan" aria-pressed="true">Texte net</button>
+      <button class="camera-envoyer" id="camera-envoyer">Envoyer</button>
+    </div>
+  </div>
+
   <div class="voile" id="voile" hidden>Touche l'écran pour entendre l'ordinateur</div>
   <audio id="son-distant" autoplay playsinline></audio>
 
   <script src="peerjs.min.js?v=1.5.5"></script>
-  <script src="commun.js?v=18"></script>
-  <script src="telephone.js?v=18"></script>
+  <script src="commun.js?v=19"></script>
+  <script src="telephone.js?v=19"></script>
 </body>
 </html>
