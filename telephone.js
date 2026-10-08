@@ -13,7 +13,7 @@ const el = {
   photo: $('#photo'), camera: $('#camera'), cameraVideo: $('#camera-video'), cameraCadre: $('#camera-cadre'),
   cameraApercu: $('#camera-apercu'), cameraAide: $('#camera-aide'),
   cameraBarrePrise: $('#camera-barre-prise'), cameraBarreEnvoi: $('#camera-barre-envoi'),
-  cameraAnnuler: $('#camera-annuler'), cameraPrendre: $('#camera-prendre'), cameraLampe: $('#camera-lampe'),
+  cameraAnnuler: $('#camera-annuler'), cameraPrendre: $('#camera-prendre'),
   cameraReprendre: $('#camera-reprendre'), cameraScan: $('#camera-scan'), cameraEnvoyer: $('#camera-envoyer'),
 };
 
@@ -47,7 +47,6 @@ el.ecranNoir.addEventListener('click', () => natif?.ecranNoir());
 el.photo.addEventListener('click', ouvrirCamera);
 el.cameraAnnuler.addEventListener('click', fermerCamera);
 el.cameraPrendre.addEventListener('click', prendrePhoto);
-el.cameraLampe.addEventListener('click', basculerLampe);
 el.cameraReprendre.addEventListener('click', reprendrePhoto);
 el.cameraScan.addEventListener('click', basculerScan);
 el.cameraEnvoyer.addEventListener('click', envoyerPhoto);
@@ -470,10 +469,11 @@ function jouerNotes({ notes, ecart }) {
 
 // ---------- Photo d'une feuille ----------
 // Appareil photo dans la page, en mode document : caméra arrière en pleine définition, cadre A4 pour
-// viser, sans flash, puis traitement « scan » (papier blanc, ombres effacées, texte foncé) avant l'envoi.
+// viser, puis traitement « scan » (papier blanc, ombres effacées, texte foncé) avant l'envoi.
+// Jamais de flash ni de lampe : ils font des reflets sur le papier.
 
 const PHOTO_COTE_MAX = 3200;  // px : largement assez pour lire une feuille A4, et léger à envoyer en 4G
-let camera = null, capteurPhoto = null, lampe = false;
+let camera = null, capteurPhoto = null;
 let photoBrute = null, photoScan = null, scanActif = true;  // { blob, url }
 
 async function ouvrirCamera() {
@@ -492,7 +492,12 @@ async function ouvrirCamera() {
     return;
   }
   const piste = camera.getVideoTracks()[0];
-  // Mise au point, exposition et blancs en continu : le texte reste net si la feuille bouge un peu.
+  // Lampe éteinte, puis mise au point, exposition et blancs en continu : le texte reste net si la
+  // feuille bouge un peu.
+  const capacites = piste.getCapabilities ? piste.getCapabilities() : {};
+  try {
+    if (capacites.torch) await piste.applyConstraints({ advanced: [{ torch: false }] });
+  } catch {}
   try {
     await piste.applyConstraints({
       advanced: [{ focusMode: 'continuous' }, { exposureMode: 'continuous' }, { whiteBalanceMode: 'continuous' }],
@@ -500,7 +505,6 @@ async function ouvrirCamera() {
   } catch {}
   el.cameraVideo.srcObject = camera;
   capteurPhoto = window.ImageCapture ? new ImageCapture(piste) : null;
-  el.cameraLampe.hidden = !(piste.getCapabilities && piste.getCapabilities().torch);
   const reglages = piste.getSettings();
   console.info(`Caméra ouverte : ${reglages.width}×${reglages.height}`);
 }
@@ -508,8 +512,6 @@ async function ouvrirCamera() {
 function fermerCamera() {
   camera?.getTracks().forEach(t => t.stop());
   camera = capteurPhoto = null;
-  lampe = false;
-  el.cameraLampe.setAttribute('aria-pressed', 'false');
   el.cameraVideo.srcObject = null;
   oublierPhoto();
   el.camera.hidden = true;
@@ -522,25 +524,20 @@ function montrerViseur() {
   el.cameraAide.textContent = 'Cadre toute la feuille, bien à plat et éclairée';
 }
 
-async function basculerLampe() {
-  const piste = camera?.getVideoTracks()[0];
-  if (!piste) return;
-  lampe = !lampe;
-  try { await piste.applyConstraints({ advanced: [{ torch: lampe }] }); } catch { lampe = false; }
-  el.cameraLampe.setAttribute('aria-pressed', String(lampe));
-}
-
 async function prendrePhoto() {
   if (!camera) return;
   el.cameraPrendre.disabled = true;
   el.cameraAide.textContent = 'Photo…';
   let image = null;
-  // Pleine définition du capteur, et sans flash : il fait des reflets sur le papier.
+  // Pleine définition du capteur, flash forcé sur « off ». Si le téléphone a un flash qu'on ne peut pas
+  // forcer à « off », pas de photo pleine définition : l'image du viseur, elle, ne déclenche jamais le flash.
   if (capteurPhoto) {
     try {
       const possibles = await capteurPhoto.getPhotoCapabilities();
+      const flashs = possibles.fillLightMode || [];
+      if (flashs.length && !flashs.includes('off')) throw new Error('flash impossible à couper');
       const options = { imageWidth: possibles.imageWidth.max, imageHeight: possibles.imageHeight.max };
-      if ((possibles.fillLightMode || []).includes('off')) options.fillLightMode = 'off';
+      if (flashs.length) options.fillLightMode = 'off';
       image = await createImageBitmap(await capteurPhoto.takePhoto(options), { imageOrientation: 'from-image' });
     } catch (e) {
       console.info(`Photo pleine définition impossible (${e.message}) : image du viseur`);
