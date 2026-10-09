@@ -299,9 +299,9 @@ function versInt16(trame) {
   return pcm;
 }
 
-// Un vocal envoyé fait forcément moins de 7 minutes : arrivé à 7 minutes, tout ce qui a été dit
-// depuis le dernier envoi est effacé et l'enregistrement repart de 0.
-const DUREE_MAX = 7 * 60;  // s
+// Envoi automatique toutes les 3 minutes sans appui. La coupure tombe entre deux morceaux reçus du
+// micro : rien n'est perdu, le morceau suivant ouvre le vocal suivant.
+const DUREE_MAX = 3 * 60;  // s
 
 function recevoirPCM(pcm) {
   if (!enAppel) return;
@@ -312,16 +312,10 @@ function recevoirPCM(pcm) {
     const v = Math.abs(pcm[i]);
     if (v > crete) crete = v;
   }
-  if (frames >= tauxEch * DUREE_MAX) effacerSegment();
-}
-
-function effacerSegment() {
-  morceaux = [];
-  frames = 0;
-  perduSegment = 0;
-  debutSegment = Date.now();
-  console.info('Vocal de 7 minutes effacé : enregistrement reparti de 0');
-  flash('Effacé (7 min)', 'refus');
+  if (frames >= tauxEch * DUREE_MAX) {
+    console.info('3 minutes sans envoi : envoi automatique');
+    envoyer();
+  }
 }
 
 function rafraichir() {
