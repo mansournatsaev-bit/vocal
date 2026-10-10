@@ -35,17 +35,10 @@ let appelOk = false, appelDepuis = 0, dernierSigne = 0, connDepuis = 0, idPrisLe
 let envoiEnCours = false, gardien = null, horloge = null, veille = null;
 let silence = null, sonsCtx = null, dernierAppuiDistant = 0;  // bouton des écouteurs
 
-// Amplification du volume au-delà de 100 % (voir afficherVolume). Déclarée avant le démarrage :
-// demarrer() affiche le volume dès son premier appel.
+// Amplification du volume au-delà de 100 % (voir afficherVolume).
 const AMPLI_MAX = 1.5;
 let ampli = Math.min(AMPLI_MAX, Math.max(1, Number(memo.lire('ampli')) || 1));
 let ampliSource = null, ampliGain = null;
-
-jalon('Page prête');
-chargerAttente();
-// Connexion au serveur et demande du micro en parallèle : l'appel s'établit plus vite.
-if (window.Peer) demarrerReseau();
-demarrer();
 
 el.bouton.addEventListener('click', () => (enAppel ? envoyer() : demarrer()));
 el.raccrocher.addEventListener('click', () => raccrocher());
@@ -1050,3 +1043,11 @@ function flash(titre, classe) {
     el.boutonTitre.textContent = enAppel ? 'Envoyer' : 'Rappeler';
   }, 700);
 }
+
+// ---------- Démarrage ----------
+// Tout à la fin du fichier : toutes les variables ci-dessus sont déclarées avant le premier appel.
+jalon('Page prête');
+chargerAttente();
+// Connexion au serveur et demande du micro en parallèle : l'appel s'établit plus vite.
+if (window.Peer) demarrerReseau();
+demarrer();
