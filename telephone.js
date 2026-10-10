@@ -35,6 +35,12 @@ let appelOk = false, appelDepuis = 0, dernierSigne = 0, connDepuis = 0, idPrisLe
 let envoiEnCours = false, gardien = null, horloge = null, veille = null;
 let silence = null, sonsCtx = null, dernierAppuiDistant = 0;  // bouton des écouteurs
 
+// Amplification du volume au-delà de 100 % (voir afficherVolume). Déclarée avant le démarrage :
+// demarrer() affiche le volume dès son premier appel.
+const AMPLI_MAX = 1.5;
+let ampli = Math.min(AMPLI_MAX, Math.max(1, Number(memo.lire('ampli')) || 1));
+let ampliSource = null, ampliGain = null;
+
 jalon('Page prête');
 chargerAttente();
 // Connexion au serveur et demande du micro en parallèle : l'appel s'établit plus vite.
@@ -56,9 +62,6 @@ window.vocalEnvoyer = envoyerDepuisBouton;
 // Dans l'appli, les boutons de volume envoient le vocal : le volume se règle ici, au milieu de l'écran.
 // De 0 à 100 % : volume normal du téléphone. De 100 à 150 % : téléphone au maximum, et l'appli
 // amplifie en plus le son de l'appel (avec un limiteur contre la saturation).
-const AMPLI_MAX = 1.5;
-let ampli = Math.min(AMPLI_MAX, Math.max(1, Number(memo.lire('ampli')) || 1));
-let ampliSource = null, ampliGain = null;
 
 if (natif && natif.volume) {
   el.volume.hidden = false;
