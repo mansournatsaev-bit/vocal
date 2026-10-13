@@ -23,6 +23,8 @@ cliquer pour rejoindre.
   pendant la lecture, et un clic sur un mot reprend à cet endroit. La voix (Piper, libre) est calculée
   dans le navigateur : le texte ne part nulle part. Elle est téléchargée une fois (63 Mo).
   **Dictée** (case cochée) : à chaque point, la voix dit « point » puis attend 3 secondes.
+  **Pause tous les N mots** : la voix s'arrête après chaque groupe de mots (5 par défaut), le temps
+  choisi en secondes ; la durée se change même pendant la lecture.
   Le bouton **Micro** en haut de la page coupe le micro de l'ordinateur : le téléphone n'entend alors
   que le texte lu.
 

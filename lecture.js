@@ -2,6 +2,7 @@
 // par une voix de synthèse envoyée dans l'appel, donc entendue sur le téléphone. Ce qui a été lu
 // change de couleur, et la vitesse se règle pendant la lecture.
 // Mode dictée : à chaque point, la voix dit « point » puis se tait 3 secondes.
+// Pause tous les N mots : la voix s'arrête le temps réglé (en secondes) après chaque groupe de mots.
 // La synthèse tourne dans lecture-worker.js ; le son rejoint l'appel par le mélange de ecoute.js.
 
 const lec = {
@@ -9,6 +10,7 @@ const lec = {
   lire: $('#lecture-lire'), pause: $('#lecture-pause'), arreter: $('#lecture-arreter'),
   vitesse: $('#lecture-vitesse'), vitesseValeur: $('#lecture-vitesse-valeur'),
   dictee: $('#lecture-dictee'), panneau: $('.lecture'),
+  groupes: $('#lecture-groupes'), groupesMots: $('#lecture-groupes-mots'), groupesPause: $('#lecture-groupes-pause'),
 };
 
 const TAILLE_MORCEAU_TEXTE = 220;  // caractères : assez court pour démarrer vite, assez long pour une diction naturelle
@@ -20,7 +22,8 @@ let ouvrier = null, voixBranchee = false;
 let serieLecture = 0;              // numéro de la lecture en cours (0 = aucune)
 let morceauxLus = [];              // { texte, mots: [{ span, fin }], poids, url, point }
 let courant = 0, enPause = false, enAttente = false;
-let silencePoint = null, suiteDue = false;  // pause après un point : minuteur en cours, ou suite à lancer à la reprise
+let silencePoint = null, suiteDue = false;  // pause (point ou groupe de mots) : minuteur en cours, ou suite à lancer à la reprise
+let parGroupes = false;            // la lecture en cours est découpée en groupes de mots
 
 lec.saisie.value = memo.lire('lecture-texte') || '';
 lec.saisie.addEventListener('input', () => memo.ecrire('lecture-texte', lec.saisie.value));
@@ -28,6 +31,12 @@ reglerVitesse(Number(memo.lire('lecture-vitesse')) || 1);
 lec.vitesse.addEventListener('input', () => reglerVitesse(Number(lec.vitesse.value)));
 lec.dictee.checked = memo.lire('lecture-dictee') !== 'non';
 lec.dictee.addEventListener('change', () => memo.ecrire('lecture-dictee', lec.dictee.checked ? 'oui' : 'non'));
+lec.groupes.checked = memo.lire('lecture-groupes') === 'oui';
+lec.groupesMots.value = memo.lire('lecture-groupes-mots') || 5;
+lec.groupesPause.value = memo.lire('lecture-groupes-pause') || 2;
+lec.groupes.addEventListener('change', () => memo.ecrire('lecture-groupes', lec.groupes.checked ? 'oui' : 'non'));
+lec.groupesMots.addEventListener('change', () => memo.ecrire('lecture-groupes-mots', nombreDeMots()));
+lec.groupesPause.addEventListener('change', () => memo.ecrire('lecture-groupes-pause', secondesDePause()));
 // La voix (63 Mo) se charge dès qu'on s'approche de la zone : « Lire » démarre alors presque tout de suite.
 for (const type of ['pointerenter', 'focusin']) {
   lec.panneau.addEventListener(type, () => travailleur().postMessage({ t: 'prechauffer' }), { once: true });
@@ -43,6 +52,16 @@ voix.addEventListener('ended', finMorceau);
 voix.addEventListener('error', () => { if (serieLecture && voix.src) allerA(courant + 1); });
 requestAnimationFrame(suivre);
 
+function nombreDeMots() {
+  return Math.max(1, Math.min(200, Math.round(Number(lec.groupesMots.value)) || 5));
+}
+
+// Lue à chaque pause : la durée peut être changée pendant la lecture.
+function secondesDePause() {
+  const s = Number(lec.groupesPause.value);
+  return Number.isFinite(s) ? Math.max(0, Math.min(60, s)) : 2;
+}
+
 function reglerVitesse(v) {
   const vitesse = Math.max(0.1, Math.min(1, v || 1));
   // defaultPlaybackRate : la vitesse est gardée quand on passe au morceau suivant.
@@ -57,7 +76,8 @@ function reglerVitesse(v) {
 // Phrases regroupées en morceaux d'environ TAILLE_MORCEAU_TEXTE caractères. Chaque morceau garde
 // ses espaces et retours à la ligne : l'affichage reproduit le texte collé.
 // En dictée, un morceau s'arrête à chaque point, pour pouvoir dire « point » et marquer la pause.
-function decouper(texte, dictee) {
+// motsParGroupe : chaque morceau est ensuite recoupé tous les N mots, pour la pause entre les groupes.
+function decouper(texte, dictee, motsParGroupe) {
   const phrases = texte.match(/[^.!?…\n]+[.!?…»")\]]*\s*|[.!?…\n]+\s*/g) || [];
   const morceaux = [];
   let encours = '';
@@ -69,11 +89,28 @@ function decouper(texte, dictee) {
   }
   if (encours) morceaux.push(encours);
   // Un morceau sans lettre ni chiffre (ligne de tirets, espaces) n'est pas lu : il rejoint le précédent.
-  return morceaux.reduce((liste, m) => {
+  const pieces = motsParGroupe ? morceaux.flatMap(m => recouper(m, motsParGroupe)) : morceaux;
+  return pieces.reduce((liste, m) => {
     if (liste.length && !/[\p{L}\p{N}]/u.test(m)) liste[liste.length - 1] += m;
     else liste.push(m);
     return liste;
   }, []).filter(m => /[\p{L}\p{N}]/u.test(m));
+}
+
+// Coupe un morceau tous les n mots, en gardant ses espaces et retours à la ligne.
+function recouper(morceau, n) {
+  const pieces = [];
+  let piece = '', mots = 0;
+  for (const bout of morceau.split(/(\s+)/)) {
+    if (!bout) continue;
+    // Un signe seul (« ! », « : », tiret) ne compte pas comme un mot et reste avec le groupe qu'il termine.
+    const mot = /[\p{L}\p{N}]/u.test(bout);
+    if (mot && mots === n) { pieces.push(piece); piece = ''; mots = 0; }
+    piece += bout;
+    if (mot) mots++;
+  }
+  if (piece) pieces.push(piece);
+  return pieces;
 }
 
 // Un vrai point final : pas des points de suspension, ni « ! » ou « ? ».
@@ -110,13 +147,15 @@ function afficher(morceaux, dictee) {
 
 function lire() {
   const dictee = lec.dictee.checked;
-  const morceaux = decouper(lec.saisie.value, dictee);
+  const motsParGroupe = lec.groupes.checked ? nombreDeMots() : 0;
+  const morceaux = decouper(lec.saisie.value, dictee, motsParGroupe);
   if (!morceaux.length) return dire('Colle un texte à lire.', 'attente');
 
   brancherVoix();
   arreter('');
   serieLecture = Date.now();
   morceauxLus = afficher(morceaux, dictee);
+  parGroupes = motsParGroupe > 0;
   courant = 0;
   enPause = false;
   enAttente = true;
@@ -155,14 +194,17 @@ function travailleur() {
   return ouvrier;
 }
 
-// Fin d'un morceau : en dictée, 3 secondes de silence après « point » avant la suite.
+// Fin d'un morceau : silence après « point » (dictée) ou après un groupe de mots, avant la suite.
+// Si les deux tombent au même endroit, on garde le plus long.
 function finMorceau() {
   if (!serieLecture) return;
   const m = morceauxLus[courant];
-  if (!m.point || courant + 1 >= morceauxLus.length) return allerA(courant + 1);
+  const attente = Math.max(m.point ? PAUSE_POINT : 0, parGroupes ? secondesDePause() * 1000 : 0);
+  if (!attente || courant + 1 >= morceauxLus.length) return allerA(courant + 1);
   marquerMorceau(m, Infinity, false);
-  dire(`Point — pause de ${PAUSE_POINT / 1000} s (${courant + 1}/${morceauxLus.length})`, 'attente');
-  silencePoint = setTimeout(() => { silencePoint = null; allerA(courant + 1); }, PAUSE_POINT);
+  const duree = String(attente / 1000).replace('.', ',');
+  dire(`${m.point ? 'Point — pause' : 'Pause'} de ${duree} s (${courant + 1}/${morceauxLus.length})`, 'attente');
+  silencePoint = setTimeout(() => { silencePoint = null; allerA(courant + 1); }, attente);
 }
 
 function allerA(i) {
