@@ -17,6 +17,11 @@ cliquer pour rejoindre.
   « Texte net » blanchit le papier, efface les ombres et fonce l'écriture (les couleurs restent).
   « Original » envoie la photo telle quelle. Sur l'ordinateur, la photo arrive dans la même liste :
   clic = l'ouvrir en grand, glisser = la déposer où on veut.
+- **Lire un texte au téléphone** (ordinateur, colonne de droite) : on colle un texte, **Lire** le fait
+  dire par une voix de synthèse envoyée dans l'appel, donc entendue sur le téléphone (pas dans les
+  haut-parleurs de l'ordinateur). Ce qui a été lu change de couleur, la vitesse se règle de 0,5 à 2 ×
+  pendant la lecture, et un clic sur un mot reprend à cet endroit. La voix (Piper, libre) est calculée
+  dans le navigateur : le texte ne part nulle part. Elle est téléchargée une fois (63 Mo).
 
 ## Appli Android (bouton volume)
 

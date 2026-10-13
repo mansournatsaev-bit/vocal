@@ -46,6 +46,7 @@ async function demarrer() {
   microPret = navigator.mediaDevices.getUserMedia({ audio: true })
     .then(flux => {
       micro = flux;
+      brancherMicro();
       el.noteMicro.hidden = true;
       suivreNiveau(flux.getAudioTracks()[0], c => { if (c > creteMicro) creteMicro = c; });
     })
@@ -144,9 +145,10 @@ async function repondre(a) {
   a.on('error', fin);
   // On décroche tout de suite pour entendre le téléphone. Si le micro n'est pas encore autorisé,
   // on envoie une piste muette, remplacée par le micro dès que la personne l'autorise.
-  a.answer(micro || pisteMuette(), { sdpTransform: opusHauteQualite });
-  if (micro) return;
+  a.answer(fluxSortant(), { sdpTransform: opusHauteQualite });
+  if (micro || melange) return;
   await microPret;
+  if (melange) return;  // le micro a déjà rejoint le mélange (brancherMicro)
   const piste = micro?.getAudioTracks()[0];
   const envoi = piste && appel === a && a.peerConnection?.getSenders().find(s => s.track?.kind === 'audio');
   if (envoi) envoi.replaceTrack(piste);
@@ -156,6 +158,30 @@ let muette = null;
 function pisteMuette() {
   if (!muette) muette = new AudioContext().createMediaStreamDestination().stream;
   return muette;
+}
+
+// Ce que l'ordinateur envoie dans l'appel : le micro seul, ou, dès la première lecture de texte
+// (lecture.js), un mélange du micro et de la voix qui lit.
+let melange = null;  // { ctx, sortie, microBranche }
+function fluxSortant() {
+  return melange ? melange.sortie.stream : micro || pisteMuette();
+}
+
+// Appelée sur un clic (Lire) : le navigateur ne laisse tourner un AudioContext qu'après un geste.
+function creerMelange() {
+  if (melange) return melange;
+  const ctx = new AudioContext();
+  melange = { ctx, sortie: ctx.createMediaStreamDestination(), microBranche: false };
+  brancherMicro();
+  const envoi = appel?.peerConnection?.getSenders().find(s => s.track?.kind === 'audio');
+  if (envoi) envoi.replaceTrack(melange.sortie.stream.getAudioTracks()[0]);
+  return melange;
+}
+
+function brancherMicro() {
+  if (!melange || !micro || melange.microBranche) return;
+  melange.ctx.createMediaStreamSource(micro).connect(melange.sortie);
+  melange.microBranche = true;
 }
 
 function surveiller() {

@@ -9,10 +9,11 @@
     if (/Android|iPhone|iPad/i.test(navigator.userAgent)) location.replace('tel.html');
   </script>
   <link rel="icon" href="icone.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=19">
+  <link rel="stylesheet" href="style.css?v=26">
   <link rel="preconnect" href="https://0.peerjs.com">
 </head>
 <body>
+  <div class="ecran">
   <div class="pc">
     <header class="pc-haut">
       <div class="etat" id="etat" data-ton="attente">
@@ -44,11 +45,32 @@
     </section>
   </div>
 
+  <!-- Lecture de texte : la voix de synthèse est envoyée dans l'appel, vers le téléphone. -->
+  <aside class="lecture">
+    <div class="lecture-tete">
+      <h2>Lire un texte au téléphone</h2>
+      <label class="lecture-reglage">Vitesse
+        <input type="range" id="lecture-vitesse" min="0.5" max="2" step="0.1" value="1">
+        <span id="lecture-vitesse-valeur">1,0 ×</span>
+      </label>
+    </div>
+    <textarea class="lecture-texte" id="lecture-saisie" placeholder="Colle ici le texte à lire…" spellcheck="false"></textarea>
+    <div class="lecture-texte lecture-affichage" id="lecture-affichage" hidden></div>
+    <p class="lecture-etat" id="lecture-etat" data-ton="neutre"></p>
+    <div class="lecture-boutons">
+      <button class="bouton-principal" id="lecture-lire">Lire</button>
+      <button class="bouton-principal" id="lecture-pause" hidden>Pause</button>
+      <button class="bouton-secondaire" id="lecture-arreter" hidden>Arrêter</button>
+    </div>
+  </aside>
+  </div>
+
   <div class="voile" id="activer-son" hidden>Clique n'importe où pour entendre l'appel</div>
   <audio id="son-distant" autoplay></audio>
 
   <script src="peerjs.min.js?v=1.5.5"></script>
   <script src="commun.js?v=19"></script>
-  <script src="ecoute.js?v=19"></script>
+  <script src="ecoute.js?v=26"></script>
+  <script src="lecture.js?v=26"></script>
 </body>
 </html>
