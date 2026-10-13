@@ -10,7 +10,7 @@ import * as ort from 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/+esm';
 
 const VOIX = 'fr_FR-siwis-medium';
 const AVANCE = 15;        // morceaux préparés au plus en avance sur la lecture (limite la mémoire)
-const PREMIER_LOT = 2;    // les premiers morceaux partent seuls, pour commencer à lire au plus vite
+const PREMIER_LOT = 1;    // le premier morceau part seul, pour commencer à lire au plus vite
 const LOT = 20;
 
 let modele = null;        // promesse { config, session }
@@ -21,6 +21,7 @@ onmessage = e => {
   if (m.t === 'lire') { serie = m.serie; joue = 0; preparer(m.serie, m.textes); }
   else if (m.t === 'position' && m.serie === serie) joue = m.i;
   else if (m.t === 'stop') serie = 0;
+  else if (m.t === 'prechauffer') charger().catch(() => {});  // la voix se charge avant le clic sur Lire
 };
 
 // Un fichier de la voix : pris dans le stockage du navigateur s'il y est déjà, sinon téléchargé puis

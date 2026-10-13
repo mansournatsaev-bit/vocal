@@ -9,7 +9,7 @@
     if (/Android|iPhone|iPad/i.test(navigator.userAgent)) location.replace('tel.html');
   </script>
   <link rel="icon" href="icone.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=26">
+  <link rel="stylesheet" href="style.css?v=27">
   <link rel="preconnect" href="https://0.peerjs.com">
 </head>
 <body>
@@ -50,8 +50,11 @@
     <div class="lecture-tete">
       <h2>Lire un texte au téléphone</h2>
       <label class="lecture-reglage">Vitesse
-        <input type="range" id="lecture-vitesse" min="0.5" max="2" step="0.1" value="1">
-        <span id="lecture-vitesse-valeur">1,0 ×</span>
+        <input type="range" id="lecture-vitesse" min="0.1" max="1" step="0.05" value="1">
+        <span id="lecture-vitesse-valeur">1,00 ×</span>
+      </label>
+      <label class="lecture-reglage" title="À chaque point, la voix dit « point » puis attend 3 secondes">
+        <input type="checkbox" id="lecture-dictee" checked> Dictée : dit « point », puis 3 s de pause
       </label>
     </div>
     <textarea class="lecture-texte" id="lecture-saisie" placeholder="Colle ici le texte à lire…" spellcheck="false"></textarea>
@@ -70,7 +73,7 @@
 
   <script src="peerjs.min.js?v=1.5.5"></script>
   <script src="commun.js?v=19"></script>
-  <script src="ecoute.js?v=26"></script>
-  <script src="lecture.js?v=26"></script>
+  <script src="ecoute.js?v=27"></script>
+  <script src="lecture.js?v=27"></script>
 </body>
 </html>

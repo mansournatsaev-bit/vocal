@@ -19,9 +19,10 @@ cliquer pour rejoindre.
   clic = l'ouvrir en grand, glisser = la déposer où on veut.
 - **Lire un texte au téléphone** (ordinateur, colonne de droite) : on colle un texte, **Lire** le fait
   dire par une voix de synthèse envoyée dans l'appel, donc entendue sur le téléphone (pas dans les
-  haut-parleurs de l'ordinateur). Ce qui a été lu change de couleur, la vitesse se règle de 0,5 à 2 ×
+  haut-parleurs de l'ordinateur). Ce qui a été lu change de couleur, la vitesse se règle de 0,1 à 1 ×
   pendant la lecture, et un clic sur un mot reprend à cet endroit. La voix (Piper, libre) est calculée
   dans le navigateur : le texte ne part nulle part. Elle est téléchargée une fois (63 Mo).
+  **Dictée** (case cochée) : à chaque point, la voix dit « point » puis attend 3 secondes.
 
 ## Appli Android (bouton volume)
 
