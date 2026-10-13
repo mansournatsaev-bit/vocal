@@ -3,6 +3,7 @@
 // change de couleur, et la vitesse se règle pendant la lecture.
 // Mode dictée : à chaque point, la voix dit « point » puis se tait 3 secondes.
 // Pause tous les N mots : la voix s'arrête le temps réglé (en secondes) après chaque groupe de mots.
+// Entraînement : plus d'appel du tout, la voix sort sur les haut-parleurs de l'ordinateur.
 // La synthèse tourne dans lecture-worker.js ; le son rejoint l'appel par le mélange de ecoute.js.
 
 const lec = {
@@ -10,6 +11,7 @@ const lec = {
   lire: $('#lecture-lire'), pause: $('#lecture-pause'), arreter: $('#lecture-arreter'),
   vitesse: $('#lecture-vitesse'), vitesseValeur: $('#lecture-vitesse-valeur'),
   dictee: $('#lecture-dictee'), panneau: $('.lecture'),
+  entrainement: $('#lecture-entrainement'), titre: $('#lecture-titre'),
   groupes: $('#lecture-groupes'), groupesMots: $('#lecture-groupes-mots'), groupesPause: $('#lecture-groupes-pause'),
 };
 
@@ -18,7 +20,7 @@ const PAUSE_POINT = 3000;          // ms de silence après « point », en mode 
 const voix = new Audio();          // joue les morceaux ; son son ne sort que dans l'appel (voir brancherVoix)
 voix.preservesPitch = true;        // changer la vitesse ne change pas la hauteur de la voix
 
-let ouvrier = null, voixBranchee = false;
+let ouvrier = null, noeudVoix = null;  // noeudVoix : la voix dans le mélange audio, une fois branchée
 let serieLecture = 0;              // numéro de la lecture en cours (0 = aucune)
 let morceauxLus = [];              // { texte, mots: [{ span, fin }], poids, url, point }
 let courant = 0, enPause = false, enAttente = false;
@@ -41,6 +43,14 @@ lec.groupesPause.addEventListener('change', () => memo.ecrire('lecture-groupes-p
 for (const type of ['pointerenter', 'focusin']) {
   lec.panneau.addEventListener(type, () => travailleur().postMessage({ t: 'prechauffer' }), { once: true });
 }
+lec.entrainement.addEventListener('click', () => {
+  reglerEntrainement(!entrainement);
+  lec.entrainement.setAttribute('aria-pressed', entrainement);
+  lec.entrainement.textContent = entrainement ? 'Quitter' : 'Entraînement';
+  lec.titre.textContent = entrainement ? 'Entraînement sur l\'ordinateur' : 'Lire un texte au téléphone';
+  routerVoix();
+  majEtatLecture();
+});
 lec.lire.addEventListener('click', lire);
 lec.pause.addEventListener('click', basculerPause);
 lec.arreter.addEventListener('click', () => arreter(''));
@@ -164,13 +174,19 @@ function lire() {
   travailleur().postMessage({ t: 'lire', serie: serieLecture, textes: morceauxLus.map(m => m.texte) });
 }
 
-// Le son de la voix part dans le mélange envoyé au téléphone, pas dans les haut-parleurs de l'ordinateur.
+// Le son de la voix part dans le mélange envoyé au téléphone, pas dans les haut-parleurs de
+// l'ordinateur ; en entraînement, c'est l'inverse.
 function brancherVoix() {
   const m = creerMelange();
   m.ctx.resume();
-  if (voixBranchee) return;
-  m.ctx.createMediaElementSource(voix).connect(m.sortie);
-  voixBranchee = true;
+  if (!noeudVoix) noeudVoix = m.ctx.createMediaElementSource(voix);
+  routerVoix();
+}
+
+function routerVoix() {
+  if (!noeudVoix) return;
+  noeudVoix.disconnect();
+  noeudVoix.connect(entrainement ? melange.ctx.destination : melange.sortie);
 }
 
 function travailleur() {
@@ -317,6 +333,7 @@ function majEtatLecture() {
   if (!serieLecture) return;
   const ou = `${courant + 1}/${morceauxLus.length}`;
   if (enPause) return dire(`En pause (${ou})`, 'neutre');
+  if (entrainement) return dire(`Lecture ${ou} — entraînement, sur l'ordinateur`, 'ok');
   // Sans appel en cours, la voix ne va nulle part : on le dit plutôt que de lire dans le vide.
   if (!(appel && debutAppel)) return dire(`Lecture ${ou} — le téléphone n'est pas en appel, il n'entend rien`, 'erreur');
   dire(`Lecture ${ou} — le téléphone entend`, 'ok');

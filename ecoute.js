@@ -21,6 +21,7 @@ let debutAppel = 0, termine = false, idPrisLe = 0;
 let reception = null, dernier = null, enLecture = null, nonLus = 0, dessinPrevu = false;
 let creteMicro = 0, creteTel = 0;
 let microCoupe = memo.lire('micro-coupe') === 'oui';  // choix gardé d'une visite à l'autre
+let entrainement = false;  // mode entraînement (lecture.js) : aucun appel, la page ne cherche plus le téléphone
 
 el.toutEffacer.addEventListener('click', toutEffacer);
 el.microBouton.addEventListener('click', () => {
@@ -162,6 +163,25 @@ async function repondre(a) {
   if (envoi) envoi.replaceTrack(piste);
 }
 
+// Entraînement : on raccroche et on quitte le serveur de mise en relation, donc plus rien ne passe
+// par le réseau ni par le relais. En sortant du mode, la page se reconnecte et l'appel reprend.
+function reglerEntrainement(actif) {
+  entrainement = actif;
+  if (actif) {
+    const ancien = peer;
+    peer = appel = tentative = reception = null;
+    debutAppel = 0;
+    liaisons.clear();
+    el.son.srcObject = null;
+    el.activerSon.hidden = true;
+    ancien?.destroy();
+    afficherReception();
+  } else {
+    creerPeer();
+  }
+  majEtat();
+}
+
 // Micro coupé : le téléphone n'entend plus l'ordinateur, sauf la lecture de texte (lecture.js).
 function appliquerMicro() {
   for (const piste of micro?.getAudioTracks() || []) piste.enabled = !microCoupe;
@@ -203,6 +223,7 @@ function brancherMicro() {
 function surveiller() {
   // PeerJS détruit la connexion si la place est encore prise à l'ouverture (ancien onglet,
   // rechargement rapide) : on en recrée une jusqu'à ce que la place se libère.
+  if (entrainement) return majEtat();
   if (!peer || peer.destroyed) return creerPeer();
   if (peer.disconnected) {
     try { peer.reconnect(); } catch {}
@@ -461,7 +482,9 @@ function afficherReception() {
 
 function majEtat() {
   let texte, ton;
-  if (!peer?.open) {
+  if (entrainement) {
+    [texte, ton] = ['Entraînement : aucun appel', 'neutre'];
+  } else if (!peer?.open) {
     [texte, ton] = Date.now() - idPrisLe < 10000
       ? ['Déjà ouvert sur un autre ordi ou onglet : ferme-le là-bas', 'erreur']
       : ['Connexion…', 'attente'];

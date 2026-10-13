@@ -27,6 +27,9 @@ cliquer pour rejoindre.
   choisi en secondes ; la durée se change même pendant la lecture.
   Le bouton **Micro** en haut de la page coupe le micro de l'ordinateur : le téléphone n'entend alors
   que le texte lu.
+  Le bouton **Entraînement** (en haut à droite) raccroche et coupe toute liaison avec le téléphone :
+  la dictée sort alors sur les haut-parleurs de l'ordinateur, sans rien consommer sur le relais.
+  Recliquer dessus reprend l'appel.
 
 ## Appli Android (bouton volume)
 

@@ -479,6 +479,10 @@ h2 { font-size: 15px; }
   padding: 16px 16px 16px 8px;
 }
 .lecture-tete { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+.lecture-tete h2 { flex: 1 1 0; min-width: 0; }
+.lecture-entrainement { flex: none; }
+.lecture-tete .lecture-reglage { flex-basis: 100%; }
+.lecture-entrainement[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--sur-accent); }
 .lecture-reglage { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--doux); }
 .lecture-reglage input { width: 120px; accent-color: var(--accent); }
 .lecture-reglage input[type="checkbox"] { width: 16px; height: 16px; margin: 0; }
