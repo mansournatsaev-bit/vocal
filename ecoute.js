@@ -8,7 +8,7 @@ const el = {
   zone: $('#zone-recu'), zoneTitre: $('#recu-titre'), zoneSous: $('#recu-sous'), zoneIndice: $('#recu-indice'),
   zoneProgression: $('#recu-progression'), zoneBarre: $('#recu-barre'),
   resume: $('#resume'), toutEffacer: $('#tout-effacer'), vocaux: $('#vocaux'),
-  activerSon: $('#activer-son'), son: $('#son-distant'),
+  activerSon: $('#activer-son'), son: $('#son-distant'), microBouton: $('#micro-bouton'),
 };
 
 const base = new Base('vocal-ecoute');
@@ -20,8 +20,15 @@ let peer = null, appel = null, micro = null, microPret = null, tentative = null;
 let debutAppel = 0, termine = false, idPrisLe = 0;
 let reception = null, dernier = null, enLecture = null, nonLus = 0, dessinPrevu = false;
 let creteMicro = 0, creteTel = 0;
+let microCoupe = memo.lire('micro-coupe') === 'oui';  // choix gardé d'une visite à l'autre
 
 el.toutEffacer.addEventListener('click', toutEffacer);
+el.microBouton.addEventListener('click', () => {
+  microCoupe = !microCoupe;
+  memo.ecrire('micro-coupe', microCoupe ? 'oui' : 'non');
+  appliquerMicro();
+});
+appliquerMicro();
 rendreGlissable(el.zone, () => dernier);
 lecteur.addEventListener('ended', () => majLecture(null));
 // Si le navigateur a bloqué le son de l'appel, le premier clic n'importe où le débloque.
@@ -46,6 +53,7 @@ async function demarrer() {
   microPret = navigator.mediaDevices.getUserMedia({ audio: true })
     .then(flux => {
       micro = flux;
+      appliquerMicro();
       brancherMicro();
       el.noteMicro.hidden = true;
       suivreNiveau(flux.getAudioTracks()[0], c => { if (c > creteMicro) creteMicro = c; });
@@ -152,6 +160,14 @@ async function repondre(a) {
   const piste = micro?.getAudioTracks()[0];
   const envoi = piste && appel === a && a.peerConnection?.getSenders().find(s => s.track?.kind === 'audio');
   if (envoi) envoi.replaceTrack(piste);
+}
+
+// Micro coupé : le téléphone n'entend plus l'ordinateur, sauf la lecture de texte (lecture.js).
+function appliquerMicro() {
+  for (const piste of micro?.getAudioTracks() || []) piste.enabled = !microCoupe;
+  el.microBouton.textContent = microCoupe ? '🔇 Micro coupé' : '🎤 Micro activé';
+  el.microBouton.dataset.coupe = microCoupe;
+  el.microBouton.title = microCoupe ? 'Le téléphone ne t\'entend pas. Clique pour réactiver le micro.' : 'Clique pour couper ton micro.';
 }
 
 let muette = null;

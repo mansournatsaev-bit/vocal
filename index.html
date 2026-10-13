@@ -9,7 +9,7 @@
     if (/Android|iPhone|iPad/i.test(navigator.userAgent)) location.replace('tel.html');
   </script>
   <link rel="icon" href="icone.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=27">
+  <link rel="stylesheet" href="style.css?v=28">
   <link rel="preconnect" href="https://0.peerjs.com">
 </head>
 <body>
@@ -26,6 +26,7 @@
         <span>Téléphone</span>
         <div class="niveau"><div class="niveau-barre" id="niveau-tel"></div></div>
       </div>
+      <button class="bouton-secondaire petit-bouton micro-bouton" id="micro-bouton">🎤 Micro activé</button>
       <p class="alerte note-micro" id="note-micro">Clique sur « Autoriser » en haut de la page pour que le téléphone t'entende.</p>
     </header>
 
@@ -73,7 +74,7 @@
 
   <script src="peerjs.min.js?v=1.5.5"></script>
   <script src="commun.js?v=19"></script>
-  <script src="ecoute.js?v=27"></script>
+  <script src="ecoute.js?v=28"></script>
   <script src="lecture.js?v=27"></script>
 </body>
 </html>

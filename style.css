@@ -254,6 +254,7 @@ h2 { font-size: 15px; }
 .pc-haut .niveaux { flex: 1 1 240px; max-width: 340px; margin-left: auto; gap: 6px 10px; }
 .pc-haut .niveau { height: 8px; }
 .note-micro { flex-basis: 100%; }
+.micro-bouton[data-coupe="true"] { background: var(--danger); border-color: var(--danger); color: #fff; }
 
 /* « Tu as reçu » : tout le tiers haut de l'écran. */
 .zone-recu {
