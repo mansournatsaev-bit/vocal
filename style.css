@@ -390,7 +390,7 @@ h2 { font-size: 15px; }
   background: #000;
   color: #fff;
 }
-.camera-video, .camera-apercu {
+.camera-video {
   flex: 1;
   min-height: 0;
   width: 100%;
@@ -444,7 +444,6 @@ h2 { font-size: 15px; }
   color: #fff;
   font-weight: 650;
 }
-.camera-petit[aria-pressed="true"] { background: #fff; color: #000; }
 .camera-declencheur {
   width: 78px; height: 78px; flex: none;
   border-radius: 50%;
@@ -453,16 +452,6 @@ h2 { font-size: 15px; }
   box-shadow: inset 0 0 0 4px #000;
 }
 .camera-declencheur:active { transform: scale(.94); }
-.camera-envoyer {
-  min-width: 104px;
-  padding: 14px 22px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--accent);
-  color: var(--sur-accent);
-  font-size: 17px;
-  font-weight: 750;
-}
 
 /* ---------- Ordinateur : lecture de texte (colonne de droite) ---------- */
 
@@ -519,9 +508,41 @@ h2 { font-size: 15px; }
 .lecture-boutons { display: flex; gap: 10px; }
 .lecture-boutons button { flex: 1; }
 
-/* Écran étroit : la lecture passe sous les vocaux. */
+/* Commandes du téléphone, à gauche de la page ordinateur. */
+.pc-commandes {
+  flex: 0 0 220px;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 8px 16px 16px;
+}
+.commande {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 16px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--accent);
+  color: var(--sur-accent);
+  text-align: left;
+}
+.commande:hover:not(:disabled) { background: var(--accent-fort); }
+.commande:disabled { background: var(--surface-2); color: var(--doux); }
+.commande-titre { font-size: 18px; font-weight: 750; }
+.commande-sous { font-size: 14px; opacity: .9; font-variant-numeric: tabular-nums; }
+.commande-info { margin: 0; font-size: 14px; font-weight: 600; color: var(--doux); }
+.commande-info:empty { display: none; }
+
+/* Écran étroit : les commandes passent en ligne au-dessus, la lecture sous les vocaux. */
 @media (max-width: 900px) {
   .ecran { flex-direction: column; }
   .ecran .pc { flex: none; }
   .lecture { flex: none; min-width: 0; height: 80vh; padding: 0 16px 16px; }
+  .pc-commandes { flex: none; height: auto; flex-direction: row; flex-wrap: wrap; padding: 16px 16px 0; }
+  .commande { flex: 1 1 200px; }
+  .commande-info { flex-basis: 100%; }
 }

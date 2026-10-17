@@ -9,11 +9,24 @@
     if (/Android|iPhone|iPad/i.test(navigator.userAgent)) location.replace('tel.html');
   </script>
   <link rel="icon" href="icone.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=30">
+  <link rel="stylesheet" href="style.css?v=31">
   <link rel="preconnect" href="https://0.peerjs.com">
 </head>
 <body>
   <div class="ecran">
+  <!-- Commandes envoyées au téléphone pendant l'appel. -->
+  <aside class="pc-commandes">
+    <button class="commande" id="photographier" disabled>
+      <span class="commande-titre">📷 Photographier</span>
+      <span class="commande-sous">Le téléphone prend une photo et l'envoie</span>
+    </button>
+    <button class="commande" id="recuperer" disabled>
+      <span class="commande-titre">🎙 Récupérer le vocal</span>
+      <span class="commande-sous" id="recuperer-sous">Pas d'appel en cours</span>
+    </button>
+    <p class="commande-info" id="commande-info" role="status"></p>
+  </aside>
+
   <div class="pc">
     <header class="pc-haut">
       <div class="etat" id="etat" data-ton="attente">
@@ -81,7 +94,7 @@
 
   <script src="peerjs.min.js?v=1.5.5"></script>
   <script src="commun.js?v=19"></script>
-  <script src="ecoute.js?v=30"></script>
+  <script src="ecoute.js?v=31"></script>
   <script src="lecture.js?v=30"></script>
 </body>
 </html>

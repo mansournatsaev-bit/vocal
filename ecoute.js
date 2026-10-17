@@ -9,6 +9,8 @@ const el = {
   zoneProgression: $('#recu-progression'), zoneBarre: $('#recu-barre'),
   resume: $('#resume'), toutEffacer: $('#tout-effacer'), vocaux: $('#vocaux'),
   activerSon: $('#activer-son'), son: $('#son-distant'), microBouton: $('#micro-bouton'),
+  photographier: $('#photographier'), recuperer: $('#recuperer'), recupererSous: $('#recuperer-sous'),
+  commandeInfo: $('#commande-info'),
 };
 
 const base = new Base('vocal-ecoute');
@@ -22,8 +24,12 @@ let reception = null, dernier = null, enLecture = null, nonLus = 0, dessinPrevu 
 let creteMicro = 0, creteTel = 0;
 let microCoupe = memo.lire('micro-coupe') === 'oui';  // choix gardé d'une visite à l'autre
 let entrainement = false;  // mode entraînement (lecture.js) : aucun appel, la page ne cherche plus le téléphone
+let telEtat = null;  // { appel, duree, le } : dernier état envoyé par le téléphone
+let infoMinuteur = null;
 
 el.toutEffacer.addEventListener('click', toutEffacer);
+el.photographier.addEventListener('click', () => commander('photographier', 'Photo demandée au téléphone…'));
+el.recuperer.addEventListener('click', () => commander('recuperer', 'Vocal demandé au téléphone…'));
 el.microBouton.addEventListener('click', () => {
   microCoupe = !microCoupe;
   memo.ecrire('micro-coupe', microCoupe ? 'oui' : 'non');
@@ -114,6 +120,7 @@ function accueillir(c) {
 
 function oublier(c) {
   liaisons.delete(c);
+  if (!liaisons.size) telEtat = null;
   if (reception?.liaison === c) {
     reception = null;
     afficherReception();
@@ -249,6 +256,8 @@ function recevoir(c, d) {
     if (m.t === 'debut') { reception = { liaison: c, meta: m, morceaux: [], recu: 0 }; afficherReception(); }
     else if (m.t === 'fin') finaliser(c, m.id);
     else if (m.t === 'raccroche') { termine = true; majEtat(); }
+    else if (m.t === 'ping' && 'appel' in m) { telEtat = { appel: !!m.appel, duree: Number(m.duree) || 0, le: Date.now() }; majCommandes(); }
+    else if (m.t === 'info') informer(String(m.texte || ''));
     return;
   }
   if (reception?.liaison !== c) return;
@@ -502,6 +511,30 @@ function majEtat() {
 
 function majChrono() {
   el.chrono.textContent = appel && debutAppel ? duree((Date.now() - debutAppel) / 1000) : '';
+  majCommandes();
+}
+
+// ---------- Commandes du téléphone ----------
+
+// Envoyée sur toutes les liaisons ouvertes : le téléphone n'obéit qu'à celle qu'il a gardée.
+function commander(t, texte) {
+  for (const c of liaisons.keys()) if (c.open) envoyerMsg(c, { t });
+  informer(texte);
+}
+
+function majCommandes() {
+  const enAppel = !!(telEtat?.appel && liaisons.size);
+  // Durée du vocal en cours sur le téléphone, avancée depuis son dernier état (envoyé toutes les 3 s).
+  const secondes = enAppel ? telEtat.duree + (Date.now() - telEtat.le) / 1000 : 0;
+  el.photographier.disabled = !enAppel;
+  el.recuperer.disabled = !enAppel || secondes < 0.5;
+  el.recupererSous.textContent = enAppel ? `Vocal en cours : ${duree(secondes)}` : 'Pas d\'appel en cours';
+}
+
+function informer(texte) {
+  el.commandeInfo.textContent = texte;
+  clearTimeout(infoMinuteur);
+  infoMinuteur = setTimeout(() => { el.commandeInfo.textContent = ''; }, 8000);
 }
 
 function majTitre() {

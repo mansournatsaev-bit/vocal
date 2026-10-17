@@ -11,10 +11,7 @@ const el = {
   bouton: $('#gros-bouton'), boutonTitre: $('#bouton-titre'), boutonSous: $('#bouton-sous'),
   son: $('#son-distant'),
   photo: $('#photo'), camera: $('#camera'), cameraVideo: $('#camera-video'), cameraCadre: $('#camera-cadre'),
-  cameraApercu: $('#camera-apercu'), cameraAide: $('#camera-aide'),
-  cameraBarrePrise: $('#camera-barre-prise'), cameraBarreEnvoi: $('#camera-barre-envoi'),
-  cameraAnnuler: $('#camera-annuler'), cameraPrendre: $('#camera-prendre'),
-  cameraReprendre: $('#camera-reprendre'), cameraScan: $('#camera-scan'), cameraEnvoyer: $('#camera-envoyer'),
+  cameraAide: $('#camera-aide'), cameraAnnuler: $('#camera-annuler'), cameraPrendre: $('#camera-prendre'),
 };
 
 // Présent quand la page tourne dans l'appli Android : elle gère les boutons de volume et l'écran noir.
@@ -45,10 +42,7 @@ el.raccrocher.addEventListener('click', () => raccrocher());
 el.ecranNoir.addEventListener('click', () => natif?.ecranNoir());
 el.photo.addEventListener('click', ouvrirCamera);
 el.cameraAnnuler.addEventListener('click', fermerCamera);
-el.cameraPrendre.addEventListener('click', prendrePhoto);
-el.cameraReprendre.addEventListener('click', reprendrePhoto);
-el.cameraScan.addEventListener('click', basculerScan);
-el.cameraEnvoyer.addEventListener('click', envoyerPhoto);
+el.cameraPrendre.addEventListener('click', () => prendrePhoto());
 // Appelée par l'appli Android quand on appuie sur un bouton de volume.
 window.vocalEnvoyer = envoyerDepuisBouton;
 
@@ -212,13 +206,14 @@ async function demarrer() {
   frames = 0;
   perduSegment = 0;
   dernierPCM = debutSegment = debutAppel = Date.now();
+  signalerEtat();
 
   el.raccrocher.hidden = false;
   el.bouton.disabled = false;
   garderEcranAllume();
   activerTelecommande();
   if (natif) {
-    el.telecommande.textContent = '🔊 Les boutons de volume envoient le vocal (bip-bip = envoyé).';
+    el.telecommande.textContent = '🔊 Les boutons de volume envoient le vocal.';
     el.telecommande.hidden = false;
     el.ecranNoir.hidden = false;
   }
@@ -341,7 +336,7 @@ async function envoyer() {
   perduSegment = 0;
   debutSegment = Date.now();
   flash('Envoyé ✓', 'envoye');
-  if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.(40);
+  signalerEtat();
 
   const numero = Number(memo.lire('vocal-num') || 0) + 1;
   memo.ecrire('vocal-num', numero);
@@ -396,8 +391,8 @@ async function raccrocher({ sansQuestion = false } = {}) {
   el.boutonTitre.textContent = 'Rappeler';
   el.boutonSous.textContent = 'Touche pour reprendre l\'appel';
   verifierFin();
-  // Muet une fois le son de fin d'appel joué.
-  if (natif && natif.couperSon) natif.couperSon(900);
+  signalerEtat();
+  if (natif && natif.couperSon) natif.couperSon(0);
 }
 
 function arreterMicro() {
@@ -479,12 +474,10 @@ function envoyerDepuisBouton() {
   if (double) {
     if (enAppel) {
       raccrocher({ sansQuestion: true });
-      jouerNotes(SON_RACCROCHE);
       return 'raccroché';
     }
     if (demarrage) return 'rappel déjà en cours (micro en attente)';
-    remettreSon();  // avant le son de rappel, pour qu'il s'entende
-    jouerNotes(SON_RAPPEL);
+    remettreSon();
     // Restée longtemps cachée, cette page n'obtient plus le micro : l'appli la remplace par une neuve,
     // qui démarre l'appel tout de suite.
     if (natif && natif.relancer) {
@@ -495,67 +488,44 @@ function envoyerDepuisBouton() {
     return 'rappel';
   }
 
-  if (!enAppel) {
-    jouerNotes(SON_RIEN);
-    return 'pas en appel (deux appuis rapides pour rappeler)';
-  }
+  if (!enAppel) return 'pas en appel (deux appuis rapides pour rappeler)';
   const secondes = frames / tauxEch;
   const assezLong = secondes >= 0.5;
   envoyer();
-  jouerNotes(assezLong ? SON_ENVOYE : SON_RIEN);
   return `${assezLong ? 'envoyé' : 'trop court'} : ${secondes.toFixed(1)} s, page ${document.visibilityState}, ` +
     `liaison ${liaisonOuverte() ? 'ouverte' : 'fermée'}`;
 }
 
-// Signaux dans les écouteurs, pour savoir ce qui s'est passé sans regarder l'écran.
-const SON_ENVOYE = { notes: [880, 1320], ecart: 0.12 };        // deux notes aiguës
-const SON_RIEN = { notes: [330], ecart: 0.12 };                // une note grave : rien envoyé
-const SON_RACCROCHE = { notes: [660, 440, 220], ecart: 0.18 }; // trois notes qui descendent
-const SON_RAPPEL = { notes: [440, 660, 880], ecart: 0.18 };    // trois notes qui montent
-
-function jouerNotes({ notes, ecart }) {
-  try {
-    if (!sonsCtx) sonsCtx = new AudioContext();
-    sonsCtx.resume();
-    const t = sonsCtx.currentTime;
-    notes.forEach((frequence, i) => {
-      const o = sonsCtx.createOscillator(), g = sonsCtx.createGain();
-      const debut = t + i * ecart, duree = ecart - 0.02;
-      o.frequency.value = frequence;
-      g.gain.setValueAtTime(0.0001, debut);
-      g.gain.exponentialRampToValueAtTime(0.12, debut + 0.01);
-      g.gain.exponentialRampToValueAtTime(0.0001, debut + duree);
-      o.connect(g).connect(sonsCtx.destination);
-      o.start(debut);
-      o.stop(debut + duree + 0.01);
-    });
-  } catch {}
-}
-
 // ---------- Photo d'une feuille ----------
 // Appareil photo dans la page, en mode document : caméra arrière en pleine définition, cadre A4 pour
-// viser, puis traitement « scan » (papier blanc, ombres effacées, texte foncé) avant l'envoi.
-// Jamais de flash ni de lampe : ils font des reflets sur le papier.
+// viser, puis traitement « scan » (papier blanc, ombres effacées, texte foncé). La photo part dès
+// qu'elle est prise, sans aperçu. Jamais de flash ni de lampe : ils font des reflets sur le papier.
 
 const PHOTO_COTE_MAX = 3200;  // px : largement assez pour lire une feuille A4, et léger à envoyer en 4G
-let camera = null, capteurPhoto = null;
-let photoBrute = null, photoScan = null, scanActif = true;  // { blob, url }
+let camera = null, capteurPhoto = null, cameraJeton = 0, photoEnCours = false;
 
 async function ouvrirCamera() {
+  const jeton = ++cameraJeton;
   el.camera.hidden = false;
-  montrerViseur();
+  el.cameraPrendre.disabled = true;
+  el.cameraAide.textContent = 'Cadre toute la feuille, bien à plat et éclairée';
+  let flux;
   try {
-    camera = await navigator.mediaDevices.getUserMedia({
+    flux = await navigator.mediaDevices.getUserMedia({
       audio: false,
       video: { facingMode: { ideal: 'environment' }, width: { ideal: 4096 }, height: { ideal: 3072 } },
     });
   } catch (e) {
-    el.cameraPrendre.disabled = true;
+    if (jeton !== cameraJeton) return;
     el.cameraAide.textContent = e.name === 'NotAllowedError'
       ? 'Caméra refusée : autorise-la dans les réglages, puis réessaie.'
       : 'Caméra indisponible : ' + e.message;
     return;
   }
+  // Caméra fermée pendant l'attente (Annuler, ou photo demandée par l'ordinateur abandonnée).
+  if (jeton !== cameraJeton) return flux.getTracks().forEach(t => t.stop());
+  camera = flux;
+  el.cameraPrendre.disabled = false;
   const piste = camera.getVideoTracks()[0];
   // Lampe éteinte, puis mise au point, exposition et blancs en continu : le texte reste net si la
   // feuille bouge un peu.
@@ -575,24 +545,31 @@ async function ouvrirCamera() {
 }
 
 function fermerCamera() {
+  cameraJeton++;
   camera?.getTracks().forEach(t => t.stop());
   camera = capteurPhoto = null;
   el.cameraVideo.srcObject = null;
-  oublierPhoto();
   el.camera.hidden = true;
 }
 
-function montrerViseur() {
-  el.cameraVideo.hidden = el.cameraCadre.hidden = el.cameraBarrePrise.hidden = false;
-  el.cameraApercu.hidden = el.cameraBarreEnvoi.hidden = true;
-  el.cameraPrendre.disabled = false;
-  el.cameraAide.textContent = 'Cadre toute la feuille, bien à plat et éclairée';
+// Prend la photo, l'améliore et l'envoie. Renvoie le numéro de la photo, ou null.
+async function prendrePhoto() {
+  if (!camera || photoEnCours) return null;
+  photoEnCours = true;
+  el.cameraPrendre.disabled = true;
+  try {
+    return await prendreEtEnvoyer();
+  } finally {
+    photoEnCours = false;
+    if (camera) el.cameraPrendre.disabled = false;
+  }
 }
 
-async function prendrePhoto() {
-  if (!camera) return;
-  el.cameraPrendre.disabled = true;
-  el.cameraAide.textContent = 'Photo…';
+async function prendreEtEnvoyer() {
+  // La photo pleine définition n'est pas l'image du viseur : le capteur refait sa mise au point et
+  // son exposition, puis capture. Ce qui compte est le cadrage à la fin de « Ne bouge pas ».
+  el.cameraAide.textContent = 'Ne bouge pas…';
+  const depart = performance.now();
   let image = null;
   // Pleine définition du capteur, flash forcé sur « off ». Si le téléphone a un flash qu'on ne peut pas
   // forcer à « off », pas de photo pleine définition : l'image du viseur, elle, ne déclenche jamais le flash.
@@ -609,61 +586,51 @@ async function prendrePhoto() {
     }
   }
   if (!image) image = await createImageBitmap(el.cameraVideo);
-  el.cameraAide.textContent = 'Amélioration du texte…';
+  const prise = ((performance.now() - depart) / 1000).toFixed(1).replace('.', ',');
+  el.cameraAide.textContent = 'Envoi…';
   await new Promise(r => setTimeout(r, 30));  // laisse l'écran afficher le message avant le calcul
   const toile = reduire(image, PHOTO_COTE_MAX);
   image.close();
-  photoBrute = await enJpeg(toile);
   ameliorerDocument(toile);
-  photoScan = await enJpeg(toile);
-  scanActif = true;
-  console.info(`Photo : ${toile.width}×${toile.height}, ${(photoScan.blob.size / 1048576).toFixed(1)} Mo`);
-  montrerApercu();
-}
+  const blob = await enJpeg(toile);
+  console.info(`Photo : prise en ${prise} s, ${toile.width}×${toile.height}, ${(blob.size / 1048576).toFixed(1)} Mo`);
 
-function montrerApercu() {
-  el.cameraVideo.hidden = el.cameraCadre.hidden = el.cameraBarrePrise.hidden = true;
-  el.cameraApercu.hidden = el.cameraBarreEnvoi.hidden = false;
-  el.cameraApercu.src = (scanActif ? photoScan : photoBrute).url;
-  el.cameraScan.setAttribute('aria-pressed', String(scanActif));
-  el.cameraScan.textContent = scanActif ? 'Texte net' : 'Original';
-  el.cameraEnvoyer.disabled = false;
-  el.cameraAide.textContent = 'Vérifie que le texte est lisible';
-}
-
-function basculerScan() {
-  scanActif = !scanActif;
-  montrerApercu();
-}
-
-function reprendrePhoto() {
-  oublierPhoto();
-  montrerViseur();
-}
-
-function oublierPhoto() {
-  for (const p of [photoBrute, photoScan]) if (p) URL.revokeObjectURL(p.url);
-  photoBrute = photoScan = null;
-  el.cameraApercu.removeAttribute('src');
-}
-
-async function envoyerPhoto() {
-  const choisie = scanActif ? photoScan : photoBrute;
-  if (!choisie) return;
-  el.cameraEnvoyer.disabled = true;
   const numero = Number(memo.lire('photo-num') || 0) + 1;
   memo.ecrire('photo-num', numero);
   const maintenant = Date.now();
   const v = { id: nouvelId(), type: 'photo', numero, debut: maintenant, duree: 0, nom: nomFichier(numero, maintenant, 'photo') };
-  const fichier = await choisie.blob.arrayBuffer();
+  const fichier = await blob.arrayBuffer();
   donnees.set(v.id, fichier);
   try { await base.mettre({ ...v, fichier }); } catch (e) { console.warn('Sauvegarde locale impossible', e); }
   attente.push(v);
   ligne(v, 'En attente', 'attente');
-  jouerNotes(SON_ENVOYE);
-  fermerCamera();
   if (window.Peer) demarrerReseau();  // la photo part aussi quand l'appel est raccroché
   pomper();
+  el.cameraAide.textContent = `Photo ${numero} envoyée ✓ (prise en ${prise} s)`;
+  return numero;
+}
+
+// Photo demandée depuis l'ordinateur : ouvre la caméra si besoin, laisse 1,5 s à la mise au point et
+// à l'exposition, photographie, envoie, puis referme ce qu'elle a ouvert. Le résultat part à l'ordinateur.
+async function photoDistante() {
+  if (photoEnCours) return informerOrdi('Une photo est déjà en cours');
+  const ouverteIci = !camera;
+  if (ouverteIci) {
+    const ouverte = await Promise.race([ouvrirCamera().then(() => !!camera), attendre(8000).then(() => false)]);
+    if (!ouverte) {
+      fermerCamera();
+      return informerOrdi('Caméra du téléphone indisponible (écran éteint ou appli en arrière-plan ?)');
+    }
+    await attendre(1500);
+  }
+  let numero = null;
+  try { numero = await prendrePhoto(); } catch (e) { console.warn('Photo', e); }
+  if (ouverteIci) fermerCamera();
+  informerOrdi(numero ? `Photo ${numero} prise, envoi en cours` : 'Photo impossible sur le téléphone');
+}
+
+function attendre(ms) {
+  return new Promise(r => setTimeout(r, ms));
 }
 
 function reduire(image, coteMax) {
@@ -678,7 +645,7 @@ function reduire(image, coteMax) {
 }
 
 function enJpeg(toile) {
-  return new Promise(ok => toile.toBlob(blob => ok({ blob, url: URL.createObjectURL(blob) }), 'image/jpeg', 0.9));
+  return new Promise(ok => toile.toBlob(ok, 'image/jpeg', 0.9));
 }
 
 // Traitement « scan » : on estime la couleur du papier en chaque point (image réduite où le texte est
@@ -790,7 +757,7 @@ function surveiller() {
       c.close();
       if (conn === c) debrancher();
     } else {
-      envoyerMsg(conn, { t: 'ping' });
+      signalerEtat();
       if (enAppel && !appel) lancerAppel();
       else if (appel && !appelOk && Date.now() - appelDepuis > 15000) couperAppel();
       if (attente.length && !envoiEnCours) pomper();
@@ -861,12 +828,33 @@ function brancher(c) {
     let m;
     try { m = JSON.parse(d); } catch { return; }
     if (m.t === 'recu') accuses.get(m.id)?.();
+    else if (m.t === 'recuperer') recupererDepuisOrdi();
+    else if (m.t === 'photographier') photoDistante();
   });
   // Nouvelle liaison = nouvel appel : l'ancien a pu mourir avec l'ancienne page de l'ordinateur.
   couperAppel();
   if (enAppel) lancerAppel();
   majEtat();
+  signalerEtat();
   pomper();
+}
+
+// L'ordinateur affiche la durée du vocal en cours sur son bouton « Récupérer le vocal » :
+// elle part avec chaque signe de vie (toutes les 3 s) et après chaque envoi.
+function signalerEtat() {
+  if (!liaisonOuverte()) return;
+  envoyerMsg(conn, { t: 'ping', appel: enAppel, duree: enAppel ? frames / tauxEch : 0 });
+}
+
+function informerOrdi(texte) {
+  if (liaisonOuverte()) envoyerMsg(conn, { t: 'info', texte });
+}
+
+// Bouton « Récupérer le vocal » de l'ordinateur : comme un appui sur Envoyer.
+function recupererDepuisOrdi() {
+  if (!enAppel) return informerOrdi('Le téléphone n\'est pas en appel');
+  if (frames < tauxEch * 0.5) return informerOrdi('Rien à récupérer pour l\'instant');
+  envoyer();
 }
 
 function debrancher() {

@@ -11,12 +11,15 @@ cliquer pour rejoindre.
   part tout seul et l'enregistrement continue sans trou dans le suivant.
 - **Ordinateur** : on entend l'appel et on parle. Le tiers haut de l'écran annonce « Tu as reçu un
   vocal ». Les vocaux arrivent dans l'ordre : clic = télécharger, glisser = le déposer où on veut
-  (bureau, dossier, page web). **Tout effacer** vide la liste.
+  (bureau, dossier, page web). **Tout effacer** vide la liste. À gauche, pendant l'appel :
+  **Photographier** fait prendre et envoyer une photo au téléphone, **Récupérer le vocal** (avec la
+  durée en cours) fait comme un appui sur Envoyer.
 - **Photo d'une feuille** (téléphone) : appareil photo en mode document, avec un cadre A4, la mise
-  au point et l'exposition réglées pour du papier, et une photo en pleine définition. Le traitement
-  « Texte net » blanchit le papier, efface les ombres et fonce l'écriture (les couleurs restent).
-  « Original » envoie la photo telle quelle. Sur l'ordinateur, la photo arrive dans la même liste :
-  clic = l'ouvrir en grand, glisser = la déposer où on veut.
+  au point et l'exposition réglées pour du papier, et une photo en pleine définition. La photo part
+  dès qu'on appuie, après le traitement « scan » qui blanchit le papier, efface les ombres et fonce
+  l'écriture (les couleurs restent). Rester immobile tant que « Ne bouge pas… » est affiché. Sur
+  l'ordinateur, la photo arrive dans la même liste : clic = l'ouvrir en grand, glisser = la déposer.
+- L'appli du téléphone ne fait aucun son à elle : on n'entend que l'ordinateur.
 - **Lire un texte au téléphone** (ordinateur, colonne de droite) : on colle un texte, **Lire** le fait
   dire par une voix de synthèse envoyée dans l'appel, donc entendue sur le téléphone (pas dans les
   haut-parleurs de l'ordinateur). Ce qui a été lu change de couleur, la vitesse se règle de 0,1 à 1 ×
@@ -36,7 +39,7 @@ cliquer pour rejoindre.
 Un site ne peut pas utiliser les boutons de volume. L'appli **Vocal** (`vocal.apk`, à installer depuis
 https://mansournatsaev-bit.github.io/vocal/vocal.apk) affiche la même page téléphone et ajoute :
 
-- **volume + ou volume −** envoie le vocal, écran allumé comme écran éteint (bip-bip = envoyé) ;
+- **volume + ou volume −** envoie le vocal, écran allumé comme écran éteint ;
 - le bouton pause/lecture des écouteurs envoie aussi le vocal ;
 - l'appel et l'enregistrement continuent écran éteint (notification « Appel en cours ») ;
 - le bouton **Écran noir** garde l'appel en cachant l'écran (double-toucher pour revenir) ;
