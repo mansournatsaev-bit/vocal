@@ -11,6 +11,7 @@ const el = {
   activerSon: $('#activer-son'), son: $('#son-distant'), microBouton: $('#micro-bouton'),
   photographier: $('#photographier'), recuperer: $('#recuperer'), recupererSous: $('#recuperer-sous'),
   commandeInfo: $('#commande-info'),
+  volumeTel: $('#volume-tel'), volumeTelValeur: $('#volume-tel-valeur'),
 };
 
 const base = new Base('vocal-ecoute');
@@ -26,6 +27,9 @@ let microCoupe = memo.lire('micro-coupe') === 'oui';  // choix gardé d'une visi
 let entrainement = false;  // mode entraînement (lecture.js) : aucun appel, la page ne cherche plus le téléphone
 let telEtat = null;  // { appel, duree, le } : dernier état envoyé par le téléphone
 let infoMinuteur = null;
+// Son du téléphone, de 0 à 200 % : jusqu'à 100 %, le lecteur de la page ; au-delà, un amplificateur.
+let volumeTel = Math.max(0, Math.min(200, Number(memo.lire('volume-tel')) || 100));
+let ampli = null;  // { ctx, gain, source, flux } une fois l'amplificateur créé
 
 el.toutEffacer.addEventListener('click', toutEffacer);
 el.photographier.addEventListener('click', () => commander('photographier', 'Photo demandée au téléphone…'));
@@ -36,10 +40,19 @@ el.microBouton.addEventListener('click', () => {
   appliquerMicro();
 });
 appliquerMicro();
+el.volumeTel.addEventListener('input', () => {
+  volumeTel = Number(el.volumeTel.value);
+  memo.ecrire('volume-tel', volumeTel);
+  majVolumeTel();
+});
+majVolumeTel();
 rendreGlissable(el.zone, () => dernier);
 lecteur.addEventListener('ended', () => majLecture(null));
 // Si le navigateur a bloqué le son de l'appel, le premier clic n'importe où le débloque.
-document.addEventListener('pointerdown', () => { if (el.son.srcObject && el.son.paused) jouer(); });
+document.addEventListener('pointerdown', () => {
+  if (el.son.srcObject && el.son.paused) jouer();
+  majVolumeTel();  // un clic permet aussi de démarrer l'amplificateur
+});
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) { nonLus = 0; majTitre(); }
 });
@@ -146,6 +159,7 @@ async function repondre(a) {
     el.son.srcObject = flux;
     debutAppel = Date.now();
     jouer();
+    majVolumeTel();
     suivreNiveau(flux.getAudioTracks()[0], c => { if (appel === a && c > creteTel) creteTel = c; });
     majEtat();
   });
@@ -155,6 +169,7 @@ async function repondre(a) {
     debutAppel = 0;
     el.son.srcObject = null;
     el.activerSon.hidden = true;
+    majVolumeTel();
     majEtat();
   };
   a.on('close', fin);
@@ -181,6 +196,7 @@ function reglerEntrainement(actif) {
     liaisons.clear();
     el.son.srcObject = null;
     el.activerSon.hidden = true;
+    majVolumeTel();
     ancien?.destroy();
     afficherReception();
   } else {
@@ -291,6 +307,48 @@ async function finaliser(c, id) {
     if (document.hidden) { nonLus++; majTitre(); }
   }
   envoyerMsg(c, { t: 'recu', id });
+}
+
+// Au-delà de 100 %, le son du téléphone passe par un amplificateur (avec un limiteur contre la
+// saturation) ; le lecteur de la page reste branché mais muet, car Chrome ne fait rien sortir d'un
+// flux d'appel qui n'est attaché à aucun lecteur. Tant que l'amplificateur ne tourne pas (le navigateur
+// attend un premier clic), le lecteur continue à 100 % : on n'a jamais moins de son qu'avant.
+function majVolumeTel() {
+  el.volumeTel.value = volumeTel;
+  el.volumeTelValeur.textContent = volumeTel + ' %';
+  const flux = el.son.srcObject;
+  if (volumeTel > 100 && flux) {
+    if (!ampli) {
+      const ctx = new AudioContext();
+      const gain = ctx.createGain(), limiteur = ctx.createDynamicsCompressor();
+      limiteur.threshold.value = -3;
+      limiteur.knee.value = 0;
+      limiteur.ratio.value = 20;
+      limiteur.attack.value = 0.003;
+      limiteur.release.value = 0.25;
+      gain.connect(limiteur).connect(ctx.destination);
+      ctx.addEventListener('statechange', majVolumeTel);
+      ampli = { ctx, gain, source: null, flux: null };
+    }
+    ampli.ctx.resume().catch(() => {});
+    ampli.gain.gain.value = volumeTel / 100;
+    if (ampli.flux !== flux) {
+      ampli.source?.disconnect();
+      ampli.source = ampli.ctx.createMediaStreamSource(flux);
+      ampli.source.connect(ampli.gain);
+      ampli.flux = flux;
+    }
+    const amplifie = ampli.ctx.state === 'running';
+    el.son.volume = 1;
+    el.son.muted = amplifie;
+    return;
+  }
+  if (ampli?.source) {
+    ampli.source.disconnect();
+    ampli.source = ampli.flux = null;
+  }
+  el.son.muted = false;
+  el.son.volume = Math.min(volumeTel, 100) / 100;
 }
 
 function jouer() {
