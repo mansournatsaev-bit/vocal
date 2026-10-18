@@ -1,0 +1,4 @@
+plugins {
+    // AGP 8.0 compile avec le SDK 30 et les build-tools 30.0.3 déjà installés sur ce PC.
+    id 'com.android.application' version '8.0.2' apply false
+}

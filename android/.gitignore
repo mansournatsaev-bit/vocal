@@ -1,0 +1,7 @@
+# Jamais dans le dépôt : clé de signature, mots de passe, chemins locaux, fichiers compilés.
+*.keystore
+*.jks
+signature.properties
+local.properties
+build/
+.gradle/
