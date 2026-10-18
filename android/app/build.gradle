@@ -1,0 +1,52 @@
+plugins {
+    id 'com.android.application'
+}
+
+// La clé de signature n'est pas publiée : vocal.keystore à la racine du projet Android, et ses mots de
+// passe dans signature.properties à côté (ou les variables VOCAL_STORE_PASSWORD et VOCAL_KEY_PASSWORD).
+// Voir COMPILER.md.
+def signature = new Properties()
+def fichierSignature = rootProject.file('signature.properties')
+if (fichierSignature.exists()) fichierSignature.withInputStream { signature.load(it) }
+
+android {
+    namespace 'fr.vocal.app'
+    compileSdk 30
+    buildToolsVersion '30.0.3'
+
+    defaultConfig {
+        applicationId 'fr.vocal.app'
+        minSdk 26
+        targetSdk 30
+        versionCode 12
+        versionName '2.1'
+    }
+
+    // Toujours la même clé, pour que chaque nouvelle version s'installe par-dessus l'ancienne.
+    signingConfigs {
+        maison {
+            storeFile rootProject.file('vocal.keystore')
+            storePassword signature.getProperty('storePassword', System.getenv('VOCAL_STORE_PASSWORD') ?: '')
+            keyAlias 'vocal'
+            keyPassword signature.getProperty('keyPassword', System.getenv('VOCAL_KEY_PASSWORD') ?: '')
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.maison
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    lint {
+        // Appli installée à la main, pas sur le Play Store : on ne bloque pas sur ses règles.
+        checkReleaseBuilds false
+        abortOnError false
+    }
+}
