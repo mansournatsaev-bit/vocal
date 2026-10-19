@@ -70,7 +70,12 @@ async function demarrer() {
 
   // Le micro est demandé tout de suite. L'appel n'attend pas la réponse : tant que le micro
   // n'est pas autorisé, le téléphone entend du silence (voir repondre).
-  microPret = navigator.mediaDevices.getUserMedia({ audio: true })
+  // Sans annulation d'écho ni réduction de bruit : elles coupaient des mots entiers quand les deux
+  // parlaient en même temps. Prévu pour un casque sur l'ordinateur ; sur haut-parleurs, le téléphone
+  // entendrait sa propre voix en écho. Le gain automatique, lui, est gardé.
+  microPret = navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true },
+  })
     .then(flux => {
       micro = flux;
       appliquerMicro();
